@@ -23,14 +23,14 @@ export function RulesDialog({ open, onClose }: RulesDialogProps) {
           <article><strong>布阵限制</strong><p>每方 25 枚。军旗只能放在两个大本营之一；地雷只能放最后两排；炸弹不能放第一排；行营必须留空。</p></article>
           <article><strong>大小顺序</strong><p>司令、军长、师长、旅长、团长、营长、连长、排长、工兵依次由大到小；同级相遇同归于尽。</p></article>
           <article><strong>特殊棋子</strong><p>工兵可以排雷；其他活动棋子碰地雷会阵亡；炸弹与任何棋子相遇都同归于尽；军旗、地雷不能移动。</p></article>
-          <article><strong>铁路与行营</strong><p>普通棋子沿无阻挡铁路直行，工兵可以转弯；进入行营的棋子不能被攻击；大本营内的棋子不能再移动。</p></article>
-          <article><strong>司令与军旗</strong><p>司令阵亡后，本方军旗立即亮出；军旗被夺、投降或无棋可走时该方出局。</p></article>
+          <article><strong>铁路与行营</strong><p>普通棋子沿无阻挡铁路直行；工兵可在连通铁路上任意转弯、绕行，但不能穿过任何棋子。进入行营的棋子不能被攻击；大本营内的棋子不能再移动。</p></article>
+          <article><strong>司令与军旗</strong><p>司令阵亡后，本方军旗立即亮出；军旗被擒获或无棋可走时，该方全军覆没并退出本局。</p></article>
           <article><strong>胜负</strong><p>夺取敌方军旗或使对方两位玩家全部出局即可获胜。</p></article>
           <article><strong>公开信息</strong><p>棋盘会反映棋子存亡和规则要求的亮旗，但不会生成“谁击败了谁”的身份记录。</p></article>
         </div>
         <div className="privacy-note">
           <strong>暗棋原则</strong>
-          <p>系统不会生成“谁击败了谁”的记录；公开战况只显示发生了移动或交锋。</p>
+          <p>系统不会生成“谁击败了谁”的记录；公开战况只显示移动、交锋或公开的全军覆没原因。</p>
         </div>
       </section>
     </div>

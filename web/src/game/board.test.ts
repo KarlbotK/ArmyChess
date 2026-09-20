@@ -44,6 +44,33 @@ describe("classic four-player board", () => {
     expect(legalDestinations(captain, [captain])).not.toContainEqual({ x: 10, y: 11 });
   });
 
+  it("lets an engineer take an alternate railway route around one blocker", () => {
+    const sapper: BoardPiece = { id: "sapper", owner: 0, type: "SAPPER", position: { x: 10, y: 12 } };
+    const blocker: BoardPiece = { id: "blocker", owner: 0, type: "MARSHAL", position: { x: 10, y: 11 } };
+
+    expect(legalDestinations(sapper, [sapper, blocker])).toContainEqual({ x: 12, y: 10 });
+  });
+
+  it("does not let an engineer pass when every railway exit is blocked", () => {
+    const sapper: BoardPiece = { id: "sapper", owner: 0, type: "SAPPER", position: { x: 10, y: 12 } };
+    const blockers: BoardPiece[] = [
+      { id: "north", owner: 0, type: "MARSHAL", position: { x: 10, y: 11 } },
+      { id: "south", owner: 0, type: "GENERAL", position: { x: 10, y: 13 } },
+    ];
+
+    expect(legalDestinations(sapper, [sapper, ...blockers])).not.toContainEqual({ x: 12, y: 10 });
+  });
+
+  it("lets an engineer capture a railway blocker but never pass through it", () => {
+    const sapper: BoardPiece = { id: "sapper", owner: 0, type: "SAPPER", position: { x: 10, y: 12 } };
+    const enemy: BoardPiece = { id: "enemy", owner: 1, type: "CAPTAIN", position: { x: 10, y: 11 } };
+    const rearBlocker: BoardPiece = { id: "rear", owner: 0, type: "GENERAL", position: { x: 10, y: 13 } };
+    const destinations = legalDestinations(sapper, [sapper, enemy, rearBlocker]);
+
+    expect(destinations).toContainEqual({ x: 10, y: 11 });
+    expect(destinations).not.toContainEqual({ x: 10, y: 10 });
+  });
+
   it.each([
     { x: 10, y: 11 },
     { x: 11, y: 10 },

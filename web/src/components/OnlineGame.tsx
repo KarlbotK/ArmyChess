@@ -10,6 +10,7 @@ import {
   validateLayout,
   type LayoutPlacement,
 } from "../game/layout";
+import { publicEventText } from "../game/publicEvents";
 import { PLAYER_META, type Coordinate, type GameSnapshot, type PieceView, type PlayerId } from "../game/types";
 import { GameSocket } from "../network/gameSocket";
 import type { RoomPlayer } from "../network/protocol";
@@ -100,14 +101,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
         } else if (message.snapshot.phase === "PLAYING") setToast("对局已同步");
       }
       if (message.type === "PUBLIC_EVENT") {
-        const actor = PLAYER_META[message.event.actor].direction;
-        const text = message.event.type === "CLASH_OCCURRED"
-          ? "棋盘上发生交锋"
-          : message.event.type === "PLAYER_ELIMINATED"
-            ? `${actor}已出局`
-            : message.event.type === "TURN_TIMED_OUT"
-              ? `${actor}超时，自动跳过（${message.event.timeoutCount}/5）`
-              : `${actor}完成移动`;
+        const text = publicEventText(message.event);
         setActivity((items) => [{
           id: `${message.event.at}-${message.event.type}`,
           text,

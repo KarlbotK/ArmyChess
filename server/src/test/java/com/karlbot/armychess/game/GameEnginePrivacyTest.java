@@ -136,6 +136,50 @@ class GameEnginePrivacyTest {
         assertThat(flag.revealed()).isTrue();
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void flagCapturePublishesTheDefeatedPlayersReason() throws Exception {
+        GameEngine engine = new GameEngine();
+        var boardField = GameEngine.class.getDeclaredField("board");
+        boardField.setAccessible(true);
+        Map<Position, PieceState> board = (Map<Position, PieceState>) boardField.get(engine);
+        board.put(new Position(8, 10), new PieceState("attacker", PieceType.CAPTAIN, 0, new Position(8, 10)));
+        board.put(new Position(8, 8), new PieceState("flag", PieceType.FLAG, 1, new Position(8, 8)));
+        board.put(new Position(8, 5), new PieceState("north-mobile", PieceType.CAPTAIN, 2, new Position(8, 5)));
+        board.put(new Position(11, 8), new PieceState("east-mobile", PieceType.CAPTAIN, 3, new Position(11, 8)));
+        setPlaying(engine);
+
+        List<PublicGameEvent> events = engine.move(0, "attacker", new Position(8, 8));
+
+        assertThat(events).anySatisfy(event -> {
+            assertThat(event.type()).isEqualTo("PLAYER_ELIMINATED");
+            assertThat(event.actor()).isEqualTo(1);
+            assertThat(event.reason().toString()).isEqualTo("FLAG_LOST");
+        });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void noLegalMovePublishesTheDefeatedPlayersReason() throws Exception {
+        GameEngine engine = new GameEngine();
+        var boardField = GameEngine.class.getDeclaredField("board");
+        boardField.setAccessible(true);
+        Map<Position, PieceState> board = (Map<Position, PieceState>) boardField.get(engine);
+        board.put(new Position(8, 10), new PieceState("south-mobile", PieceType.CAPTAIN, 0, new Position(8, 10)));
+        board.put(new Position(0, 7), new PieceState("west-flag", PieceType.FLAG, 1, new Position(0, 7)));
+        board.put(new Position(8, 5), new PieceState("north-mobile", PieceType.CAPTAIN, 2, new Position(8, 5)));
+        setPlaying(engine);
+
+        List<PublicGameEvent> events = engine.move(0, "south-mobile", new Position(8, 8));
+
+        assertThat(events).anySatisfy(event -> {
+            assertThat(event.type()).isEqualTo("PLAYER_ELIMINATED");
+            assertThat(event.actor()).isEqualTo(1);
+            assertThat(event.reason().toString()).isEqualTo("NO_LEGAL_MOVE");
+        });
+        assertThat(engine.snapshotFor(0).alive().get(1)).isFalse();
+    }
+
     private static void assertLayoutCode(List<PiecePlacement> layout, String expectedCode) {
         GameEngine engine = new GameEngine();
         assertThatThrownBy(() -> engine.submitLayout(0, layout))
@@ -176,6 +220,12 @@ class GameEnginePrivacyTest {
             }
         }
         throw new AssertionError("No legal move found for player " + player);
+    }
+
+    private static void setPlaying(GameEngine engine) throws Exception {
+        var phaseField = GameEngine.class.getDeclaredField("phase");
+        phaseField.setAccessible(true);
+        phaseField.set(engine, GameEngine.Phase.PLAYING);
     }
 
     private static GameEngine startedGame() {

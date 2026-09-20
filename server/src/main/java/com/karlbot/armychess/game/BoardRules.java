@@ -145,6 +145,10 @@ public final class BoardRules {
 
     public static List<Position> legalDestinations(PieceState piece, Map<Position, PieceState> board) {
         List<Position> legal = new ArrayList<>();
+        Set<Position> reachableBySapper = piece.type() == PieceType.SAPPER
+                && isRail(piece.position()) && !isHeadquarters(piece.position())
+                ? sapperReachable(piece.position(), board)
+                : Set.of();
         for (int y = 0; y < SIZE; y++) {
             for (int x = 0; x < SIZE; x++) {
                 if (!isValidPoint(x, y)) continue;
@@ -152,7 +156,10 @@ public final class BoardRules {
                 if (!isStation(target)) continue;
                 PieceState occupant = board.get(target);
                 if (occupant != null && (isTeammate(piece.owner(), occupant.owner()) || isCamp(target))) continue;
-                if (isValidPath(piece, target, board)) legal.add(target);
+                boolean validPath = piece.type() == PieceType.SAPPER && isRail(target)
+                        ? reachableBySapper.contains(target)
+                        : isValidPath(piece, target, board);
+                if (validPath) legal.add(target);
             }
         }
         return legal;
@@ -164,7 +171,7 @@ public final class BoardRules {
         if (piece.type() == PieceType.LANDMINE || piece.type() == PieceType.FLAG || isHeadquarters(from)) return false;
         if (isNeighbor(from, to)) return true;
         if (!isRail(from) || !isRail(to)) return false;
-        if (piece.type() == PieceType.SAPPER) return sapperCanReach(from, to, board);
+        if (piece.type() == PieceType.SAPPER) return sapperReachable(from, board).contains(to);
         if (from.x() == to.x() || from.y() == to.y()) return pathClear(from, to, board);
         return curveClear(from, to, board);
     }
@@ -222,45 +229,46 @@ public final class BoardRules {
     private static boolean westTop(Position p) { return p.y() == 6 && p.x() <= 5; }
     private static boolean northLeft(Position p) { return p.x() == 6 && p.y() <= 5; }
 
-    private static boolean sapperCanReach(Position from, Position to, Map<Position, PieceState> board) {
+    private static Set<Position> sapperReachable(Position from, Map<Position, PieceState> board) {
         Queue<Position> queue = new ArrayDeque<>();
         Set<Position> visited = new HashSet<>();
+        Set<Position> reachable = new HashSet<>();
         queue.add(from);
         visited.add(from);
         int[][] directions = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
         while (!queue.isEmpty()) {
             Position current = queue.remove();
-            if (current.equals(to)) return true;
             for (int[] direction : directions) {
                 int x = current.x() + direction[0];
                 int y = current.y() + direction[1];
                 if (!isValidPoint(x, y)) continue;
                 Position next = new Position(x, y);
                 if (!isRail(next) || !isNeighbor(current, next)) continue;
-                addReachable(next, to, board, visited, queue);
+                addReachable(next, board, visited, reachable, queue);
             }
-            addCorner(current, new Position(10, 5), new Position(11, 6), to, board, visited, queue);
-            addCorner(current, new Position(11, 6), new Position(10, 5), to, board, visited, queue);
-            addCorner(current, new Position(11, 10), new Position(10, 11), to, board, visited, queue);
-            addCorner(current, new Position(10, 11), new Position(11, 10), to, board, visited, queue);
-            addCorner(current, new Position(6, 11), new Position(5, 10), to, board, visited, queue);
-            addCorner(current, new Position(5, 10), new Position(6, 11), to, board, visited, queue);
-            addCorner(current, new Position(5, 6), new Position(6, 5), to, board, visited, queue);
-            addCorner(current, new Position(6, 5), new Position(5, 6), to, board, visited, queue);
+            addCorner(current, new Position(10, 5), new Position(11, 6), board, visited, reachable, queue);
+            addCorner(current, new Position(11, 6), new Position(10, 5), board, visited, reachable, queue);
+            addCorner(current, new Position(11, 10), new Position(10, 11), board, visited, reachable, queue);
+            addCorner(current, new Position(10, 11), new Position(11, 10), board, visited, reachable, queue);
+            addCorner(current, new Position(6, 11), new Position(5, 10), board, visited, reachable, queue);
+            addCorner(current, new Position(5, 10), new Position(6, 11), board, visited, reachable, queue);
+            addCorner(current, new Position(5, 6), new Position(6, 5), board, visited, reachable, queue);
+            addCorner(current, new Position(6, 5), new Position(5, 6), board, visited, reachable, queue);
         }
-        return false;
+        return reachable;
     }
 
-    private static void addCorner(Position current, Position source, Position destination, Position target,
-                                  Map<Position, PieceState> board, Set<Position> visited, Queue<Position> queue) {
-        if (current.equals(source)) addReachable(destination, target, board, visited, queue);
+    private static void addCorner(Position current, Position source, Position destination,
+                                  Map<Position, PieceState> board, Set<Position> visited,
+                                  Set<Position> reachable, Queue<Position> queue) {
+        if (current.equals(source)) addReachable(destination, board, visited, reachable, queue);
     }
 
-    private static void addReachable(Position next, Position target, Map<Position, PieceState> board,
-                                     Set<Position> visited, Queue<Position> queue) {
+    private static void addReachable(Position next, Map<Position, PieceState> board,
+                                     Set<Position> visited, Set<Position> reachable, Queue<Position> queue) {
         if (visited.contains(next)) return;
-        if (board.containsKey(next) && !next.equals(target)) return;
         visited.add(next);
-        queue.add(next);
+        reachable.add(next);
+        if (!board.containsKey(next)) queue.add(next);
     }
 }

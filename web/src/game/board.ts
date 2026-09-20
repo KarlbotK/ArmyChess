@@ -140,6 +140,12 @@ const VALID_POINTS: Coordinate[] = Array.from({ length: BOARD_SIZE * BOARD_SIZE 
   y: Math.floor(index / BOARD_SIZE),
 })).filter(({ x, y }) => isValidPoint(x, y));
 
+const RAIL_POINTS = VALID_POINTS.filter(({ x, y }) => isRail(x, y));
+const RAIL_NEIGHBORS = new Map(RAIL_POINTS.map((point) => [
+  keyOf(point),
+  RAIL_POINTS.filter((candidate) => isNeighbor(point, candidate)),
+]));
+
 export interface BoardPiece {
   id: string;
   owner: PlayerId;
@@ -196,23 +202,21 @@ function curveClear(from: Coordinate, to: Coordinate, occupied: ReadonlySet<stri
   );
 }
 
-function sapperCanReach(from: Coordinate, to: Coordinate, occupied: ReadonlySet<string>) {
+function sapperReachable(from: Coordinate, occupied: ReadonlySet<string>) {
   const queue: Coordinate[] = [from];
   const visited = new Set([keyOf(from)]);
+  const reachable = new Set<string>();
   while (queue.length > 0) {
     const current = queue.shift()!;
-    if (current.x === to.x && current.y === to.y) return true;
-    for (const candidate of VALID_POINTS) {
-      if (!isRail(candidate.x, candidate.y) || !isRail(current.x, current.y)) continue;
-      if (!isNeighbor(current, candidate)) continue;
+    for (const candidate of RAIL_NEIGHBORS.get(keyOf(current)) ?? []) {
       const key = keyOf(candidate);
       if (visited.has(key)) continue;
-      if (occupied.has(key) && key !== keyOf(to)) continue;
       visited.add(key);
-      queue.push(candidate);
+      reachable.add(key);
+      if (!occupied.has(key)) queue.push(candidate);
     }
   }
-  return false;
+  return reachable;
 }
 
 export function isValidMovePath(
@@ -225,16 +229,22 @@ export function isValidMovePath(
   if (piece.type === "LANDMINE" || piece.type === "FLAG" || isHeadquarters(from.x, from.y)) return false;
   if (isNeighbor(from, to)) return true;
   if (!isRail(from.x, from.y) || !isRail(to.x, to.y)) return false;
-  if (piece.type === "SAPPER") return sapperCanReach(from, to, occupied);
+  if (piece.type === "SAPPER") return sapperReachable(from, occupied).has(keyOf(to));
   if (from.x === to.x || from.y === to.y) return pathClear(from, to, occupied);
   return curveClear(from, to, occupied);
 }
 
 export function legalDestinations(piece: BoardPiece, pieces: readonly BoardPiece[]) {
   const occupied = new Set(pieces.map(({ position }) => keyOf(position)));
+  const reachableBySapper = piece.type === "SAPPER"
+    && isRail(piece.position.x, piece.position.y)
+    && !isHeadquarters(piece.position.x, piece.position.y)
+    ? sapperReachable(piece.position, occupied)
+    : null;
   return STATIONS.filter((to) => {
     const target = pieces.find(({ position }) => position.x === to.x && position.y === to.y);
     if (target && (isTeammate(piece.owner, target.owner) || isCamp(to.x, to.y))) return false;
+    if (reachableBySapper && isRail(to.x, to.y)) return reachableBySapper.has(keyOf(to));
     return isValidMovePath(piece, to, occupied);
   });
 }

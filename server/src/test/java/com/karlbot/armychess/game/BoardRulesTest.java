@@ -22,6 +22,48 @@ class BoardRulesTest {
     }
 
     @Test
+    void engineerCanUseAnAlternateRailwayRouteAroundOneBlocker() {
+        Position from = new Position(10, 12);
+        PieceState sapper = new PieceState("sapper", PieceType.SAPPER, 0, from);
+        PieceState blocker = new PieceState("blocker", PieceType.MARSHAL, 0, new Position(10, 11));
+        Map<Position, PieceState> board = new HashMap<>();
+        board.put(sapper.position(), sapper);
+        board.put(blocker.position(), blocker);
+
+        assertThat(BoardRules.legalDestinations(sapper, board)).contains(new Position(12, 10));
+    }
+
+    @Test
+    void engineerCannotPassWhenEveryRailwayExitIsBlocked() {
+        Position from = new Position(10, 12);
+        PieceState sapper = new PieceState("sapper", PieceType.SAPPER, 0, from);
+        PieceState north = new PieceState("north", PieceType.MARSHAL, 0, new Position(10, 11));
+        PieceState south = new PieceState("south", PieceType.GENERAL, 0, new Position(10, 13));
+        Map<Position, PieceState> board = new HashMap<>();
+        board.put(sapper.position(), sapper);
+        board.put(north.position(), north);
+        board.put(south.position(), south);
+
+        assertThat(BoardRules.legalDestinations(sapper, board)).doesNotContain(new Position(12, 10));
+    }
+
+    @Test
+    void engineerCanCaptureARailwayBlockerButCannotPassThroughIt() {
+        Position from = new Position(10, 12);
+        PieceState sapper = new PieceState("sapper", PieceType.SAPPER, 0, from);
+        PieceState enemy = new PieceState("enemy", PieceType.CAPTAIN, 1, new Position(10, 11));
+        PieceState rearBlocker = new PieceState("rear", PieceType.GENERAL, 0, new Position(10, 13));
+        Map<Position, PieceState> board = new HashMap<>();
+        board.put(sapper.position(), sapper);
+        board.put(enemy.position(), enemy);
+        board.put(rearBlocker.position(), rearBlocker);
+
+        assertThat(BoardRules.legalDestinations(sapper, board))
+                .contains(new Position(10, 11))
+                .doesNotContain(new Position(10, 10));
+    }
+
+    @Test
     void campsAndHeadquartersMatchClassicFourPlayerBoard() {
         assertThat(BoardRules.isCamp(new Position(8, 13))).isTrue();
         assertThat(BoardRules.isHeadquarters(new Position(7, 16))).isTrue();

@@ -96,15 +96,15 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
                     requireRevision(room.engine(), input.path("expectedRevision").asLong(-1));
                     String pieceId = requiredText(input, "pieceId", 80);
                     Position to = json.treeToValue(input.path("to"), Position.class);
-                    PublicGameEvent event = room.engine().move(playerId, pieceId, to);
+                    List<PublicGameEvent> events = room.engine().move(playerId, pieceId, to);
                     acknowledge(session, requestId);
-                    broadcast(room, envelope("PUBLIC_EVENT", "event", event));
+                    broadcastEvents(room, events);
                     broadcastSnapshots(room);
                 }
                 case "SURRENDER_REQUEST" -> {
-                    PublicGameEvent event = room.engine().surrender(playerId);
+                    List<PublicGameEvent> events = room.engine().surrender(playerId);
                     acknowledge(session, requestId);
-                    broadcast(room, envelope("PUBLIC_EVENT", "event", event));
+                    broadcastEvents(room, events);
                     broadcastSnapshots(room);
                 }
                 case "REMATCH_REQUEST" -> {
@@ -153,8 +153,8 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
     public void expireOverdueTurns() {
         long now = System.currentTimeMillis();
         for (GameRoom room : rooms.all()) {
-            room.engine().expireTurn(now).ifPresent(event -> {
-                broadcast(room, envelope("PUBLIC_EVENT", "event", event));
+            room.engine().expireTurn(now).ifPresent(events -> {
+                broadcastEvents(room, events);
                 broadcastSnapshots(room);
             });
         }
@@ -206,6 +206,12 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
         for (PlayerSlot player : room.players()) {
             WebSocketSession session = player.session();
             if (session != null && session.isOpen()) sendQuietly(session, payload);
+        }
+    }
+
+    private void broadcastEvents(GameRoom room, List<PublicGameEvent> events) {
+        for (PublicGameEvent event : events) {
+            broadcast(room, envelope("PUBLIC_EVENT", "event", event));
         }
     }
 

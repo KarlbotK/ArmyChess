@@ -93,7 +93,7 @@ public final class GameEngine {
         }
     }
 
-    public synchronized PublicGameEvent move(int player, String pieceId, Position to) {
+    public synchronized List<PublicGameEvent> move(int player, String pieceId, Position to) {
         requirePlayer(player);
         if (phase != Phase.PLAYING) throw new GameRuleException("WRONG_PHASE", "对局尚未开始");
         if (player != currentTurn) throw new GameRuleException("NOT_YOUR_TURN", "还没轮到你");
@@ -108,23 +108,24 @@ public final class GameEngine {
 
         PieceState defender = board.get(to);
         board.remove(attacker.position());
-        PublicGameEvent event;
+        List<PublicGameEvent> events = new ArrayList<>();
         if (defender == null) {
             attacker.moveTo(to);
             board.put(to, attacker);
-            event = PublicGameEvent.move(player);
+            events.add(PublicGameEvent.move(player));
         } else {
-            event = resolveBattle(attacker, defender, to);
+            events.addAll(resolveBattle(attacker, defender, to));
         }
         revision++;
         if (phase == Phase.PLAYING) {
-            advanceTurn();
+            events.addAll(advanceTurn());
             resetTurnDeadline(System.currentTimeMillis());
         }
-        return event;
+        return List.copyOf(events);
     }
 
-    private PublicGameEvent resolveBattle(PieceState attacker, PieceState defender, Position target) {
+    private List<PublicGameEvent> resolveBattle(PieceState attacker, PieceState defender, Position target) {
+        List<PublicGameEvent> events = new ArrayList<>();
         int result = judge(attacker.type(), defender.type());
         board.remove(target);
         if (attacker.type() == PieceType.MARSHAL && result <= 0) revealFlag(attacker.owner());
@@ -132,11 +133,15 @@ public final class GameEngine {
         if (result > 0) {
             attacker.moveTo(target);
             board.put(target, attacker);
-            if (defender.type() == PieceType.FLAG) eliminate(defender.owner(), "FLAG_LOST");
+            if (defender.type() == PieceType.FLAG) {
+                eliminate(defender.owner());
+                events.add(PublicGameEvent.eliminated(defender.owner(), "FLAG_LOST"));
+            }
         } else if (result < 0) {
             board.put(target, defender);
         }
-        return PublicGameEvent.clash(attacker.owner(), target);
+        events.add(0, PublicGameEvent.clash(attacker.owner(), target));
+        return List.copyOf(events);
     }
 
     private int judge(PieceType attacker, PieceType defender) {
@@ -153,36 +158,38 @@ public final class GameEngine {
                 .ifPresent(PieceState::reveal);
     }
 
-    public synchronized PublicGameEvent surrender(int player) {
+    public synchronized List<PublicGameEvent> surrender(int player) {
         requirePlayer(player);
         if (phase != Phase.PLAYING) throw new GameRuleException("WRONG_PHASE", "对局尚未开始");
         if (!alive[player]) throw new GameRuleException("PLAYER_ELIMINATED", "玩家已经出局");
-        eliminate(player, "SURRENDER");
+        eliminate(player);
+        List<PublicGameEvent> events = new ArrayList<>();
+        events.add(PublicGameEvent.eliminated(player, "SURRENDER"));
         revision++;
         if (phase == Phase.PLAYING) {
-            advanceTurn();
+            events.addAll(advanceTurn());
             resetTurnDeadline(System.currentTimeMillis());
         }
-        return PublicGameEvent.eliminated(player, "SURRENDER");
+        return List.copyOf(events);
     }
 
-    public synchronized Optional<PublicGameEvent> expireTurn(long nowEpochMs) {
+    public synchronized Optional<List<PublicGameEvent>> expireTurn(long nowEpochMs) {
         if (phase != Phase.PLAYING || turnDeadlineEpochMs == null || nowEpochMs < turnDeadlineEpochMs) {
             return Optional.empty();
         }
         int timedOutPlayer = currentTurn;
         timeoutCounts[timedOutPlayer]++;
-        PublicGameEvent event;
+        List<PublicGameEvent> events = new ArrayList<>();
         if (timeoutCounts[timedOutPlayer] >= MAX_TIMEOUTS) {
-            eliminate(timedOutPlayer, "TIMEOUT");
-            event = PublicGameEvent.eliminated(timedOutPlayer, "TIMEOUT");
+            eliminate(timedOutPlayer);
+            events.add(PublicGameEvent.eliminated(timedOutPlayer, "TIMEOUT"));
         } else {
-            event = PublicGameEvent.timedOut(timedOutPlayer, timeoutCounts[timedOutPlayer]);
+            events.add(PublicGameEvent.timedOut(timedOutPlayer, timeoutCounts[timedOutPlayer]));
         }
         revision++;
-        if (phase == Phase.PLAYING) advanceTurn();
+        if (phase == Phase.PLAYING) events.addAll(advanceTurn());
         resetTurnDeadline(nowEpochMs);
-        return Optional.of(event);
+        return Optional.of(List.copyOf(events));
     }
 
     public synchronized boolean requestRematch(int player) {
@@ -195,7 +202,7 @@ public final class GameEngine {
         return true;
     }
 
-    private void eliminate(int player, String reason) {
+    private void eliminate(int player) {
         alive[player] = false;
         board.entrySet().removeIf(entry -> entry.getValue().owner() == player);
         boolean northSouth = alive[0] || alive[2];
@@ -207,13 +214,18 @@ public final class GameEngine {
         }
     }
 
-    private void advanceTurn() {
+    private List<PublicGameEvent> advanceTurn() {
+        List<PublicGameEvent> events = new ArrayList<>();
         for (int attempts = 0; attempts < 4; attempts++) {
             currentTurn = (currentTurn + 1) % 4;
-            if (alive[currentTurn] && hasLegalMove(currentTurn)) return;
-            if (alive[currentTurn]) eliminate(currentTurn, "NO_LEGAL_MOVE");
-            if (phase == Phase.FINISHED) return;
+            if (alive[currentTurn] && hasLegalMove(currentTurn)) return List.copyOf(events);
+            if (alive[currentTurn]) {
+                eliminate(currentTurn);
+                events.add(PublicGameEvent.eliminated(currentTurn, "NO_LEGAL_MOVE"));
+            }
+            if (phase == Phase.FINISHED) return List.copyOf(events);
         }
+        return List.copyOf(events);
     }
 
     private boolean hasLegalMove(int player) {
