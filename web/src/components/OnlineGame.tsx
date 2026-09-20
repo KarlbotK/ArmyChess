@@ -9,7 +9,7 @@ import { socketUrl, type SessionTicket } from "../network/rooms";
 import { ActivityPanel, type ActivityItem } from "./ActivityPanel";
 import { GameBoard } from "./GameBoard";
 import { LayoutPanel } from "./LayoutPanel";
-import { ChatDrawer, RulesDialog, SurrenderDialog } from "./Overlays";
+import { ChatDrawer, ResultDialog, RulesDialog, SurrenderDialog } from "./Overlays";
 import { PlayerPlate } from "./PlayerPlate";
 
 const SEATS = ["south", "west", "north", "east"] as const;
@@ -19,7 +19,10 @@ function timeNow() {
 }
 
 function emptySnapshot(viewer: PlayerId): GameSnapshot {
-  return { phase: "LAYOUT", viewer, currentTurn: 0, revision: 0, pieces: [] };
+  return {
+    phase: "LAYOUT", viewer, currentTurn: 0, revision: 0, pieces: [], turnDeadlineEpochMs: null,
+    alive: [true, true, true, true], timeoutCounts: [0, 0, 0, 0], winnerTeam: null, rematchVotes: 0,
+  };
 }
 
 export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave: () => void }) {
@@ -40,6 +43,8 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
   const [surrenderOpen, setSurrenderOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [rematchRequested, setRematchRequested] = useState(false);
+  const [clock, setClock] = useState(Date.now());
   const [toast, setToast] = useState("正在连接牌桌…");
   const [connected, setConnected] = useState(false);
 
@@ -70,6 +75,13 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
           setSelectedId(null);
           setLegalMoves([]);
         }
+        if (previous.phase === "FINISHED" && message.snapshot.phase === "LAYOUT") {
+          setSubmitted(false);
+          setRematchRequested(false);
+          setLayout(createDefaultLayout(ticket.playerId));
+          setActivity([]);
+          setToast("新一局开始，请重新布阵");
+        }
         if (message.snapshot.phase === "LAYOUT" && message.snapshot.pieces.filter(({ owner }) => owner === ticket.playerId).length === 25) {
           setSubmitted(true);
         }
@@ -81,9 +93,16 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
       }
       if (message.type === "PUBLIC_EVENT") {
         const actor = PLAYER_META[message.event.actor].direction;
+        const text = message.event.type === "CLASH_OCCURRED"
+          ? "棋盘上发生交锋"
+          : message.event.type === "PLAYER_ELIMINATED"
+            ? `${actor}已出局`
+            : message.event.type === "TURN_TIMED_OUT"
+              ? `${actor}超时，自动跳过（${message.event.timeoutCount}/5）`
+              : `${actor}完成移动`;
         setActivity((items) => [{
           id: `${message.event.at}-${message.event.type}`,
-          text: message.event.type === "CLASH_OCCURRED" ? "棋盘上发生交锋" : message.event.type === "PLAYER_ELIMINATED" ? `${actor}已出局` : `${actor}完成移动`,
+          text,
           time: timeNow(),
           tone: message.event.actor === 1 ? "blue" : message.event.actor === 3 ? "violet" : "coral",
         }, ...items]);
@@ -110,6 +129,13 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (snapshot.phase !== "PLAYING" || snapshot.turnDeadlineEpochMs === null) return;
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [snapshot.phase, snapshot.turnDeadlineEpochMs]);
+
   const snapshotHasOwnLayout = snapshot.phase === "LAYOUT"
     && snapshot.pieces.filter(({ owner }) => owner === ticket.playerId).length === 25;
   const layoutPieces = useMemo<PieceView[]>(() => layout.map((placement, index) => ({
@@ -128,6 +154,11 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
   })), [visiblePieces, ticket.playerId]);
   const layoutStatus = useMemo(() => validateLayout(ticket.playerId, layout), [layout, ticket.playerId]);
   const submittedCount = new Set(snapshot.pieces.map(({ owner }) => owner)).size;
+  const secondsRemaining = snapshot.turnDeadlineEpochMs === null
+    ? null
+    : Math.max(0, Math.ceil((snapshot.turnDeadlineEpochMs - clock) / 1_000));
+  const viewerTeam = ticket.playerId % 2 === 0 ? "NORTH_SOUTH" : "EAST_WEST";
+  const winnerLabel = snapshot.winnerTeam === "NORTH_SOUTH" ? "南北队" : "东西队";
 
   const handleSelect = (pieceId: string) => {
     if (snapshot.phase === "LAYOUT") {
@@ -209,12 +240,22 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     window.setTimeout(() => setCopied(false), 1_800);
   };
 
+  const requestRematch = () => {
+    if (rematchRequested || snapshot.phase !== "FINISHED") return;
+    socketRef.current?.send({ type: "REMATCH_REQUEST" });
+    setRematchRequested(true);
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <button className="brand brand-button" type="button" onClick={onLeave} aria-label="返回大厅"><Mountains weight="fill" /><span>四国军棋</span><em>Online</em></button>
         <button className="room-code" type="button" onClick={copyRoomCode}><span>房间号：{ticket.roomCode}</span>{copied ? <Check weight="bold" /> : <CopySimple />}</button>
-        <div className="turn-status" aria-live="polite"><span>{snapshot.phase === "LAYOUT" ? players.length < 4 ? `等待玩家 ${players.length}/4` : "布阵阶段" : snapshot.currentTurn === ticket.playerId ? "你的回合" : `${PLAYER_META[snapshot.currentTurn].direction}回合`}</span><small>南 → 西 → 北 → 东</small></div>
+        <div className="turn-status" aria-live="polite">
+          <span>{snapshot.phase === "LAYOUT" ? players.length < 4 ? `等待玩家 ${players.length}/4` : "布阵阶段" : snapshot.phase === "FINISHED" ? "对局结束" : snapshot.currentTurn === ticket.playerId ? "你的回合" : `${PLAYER_META[snapshot.currentTurn].direction}回合`}</span>
+          <small>南 → 西 → 北 → 东</small>
+          {snapshot.phase === "PLAYING" && secondsRemaining !== null && <strong className={secondsRemaining <= 5 ? "is-urgent" : ""}>00:{String(secondsRemaining).padStart(2, "0")}</strong>}
+        </div>
         <div className="topbar__meta"><span className="network-state"><WifiHigh weight="bold" />{connected ? " 已连接" : " 重连中"}</span><button className="topbar-action" type="button" onClick={() => setRulesOpen(true)}><BookOpen />规则</button><span className="topbar-divider" /><button className="topbar-action" type="button" onClick={() => setSurrenderOpen(true)} disabled={snapshot.phase !== "PLAYING"}><Flag />投降</button></div>
       </header>
       <main className="game-surface">
@@ -234,6 +275,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
       <ChatDrawer open={chatOpen} onToggle={() => setChatOpen((value) => !value)} messages={chatMessages} onSend={(text) => socketRef.current?.send({ type: "CHAT_SEND", text })} />
       <RulesDialog open={rulesOpen} onClose={() => setRulesOpen(false)} />
       <SurrenderDialog open={surrenderOpen} onClose={() => setSurrenderOpen(false)} onConfirm={() => { socketRef.current?.send({ type: "SURRENDER_REQUEST" }); setSurrenderOpen(false); }} />
+      <ResultDialog open={snapshot.phase === "FINISHED"} won={snapshot.winnerTeam === viewerTeam} winnerLabel={winnerLabel} requested={rematchRequested} voteCount={snapshot.rematchVotes} onRematch={requestRematch} onLeave={onLeave} />
       <div className={`toast${toast ? " is-visible" : ""}`} role="status">{toast}</div>
     </div>
   );

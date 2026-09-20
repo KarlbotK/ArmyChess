@@ -8,11 +8,13 @@ export type ClientMessage =
   | { v: 1; type: "MOVE_REQUEST"; requestId: string; pieceId: string; to: Coordinate; expectedRevision: number }
   | { v: 1; type: "CHAT_SEND"; requestId: string; text: string }
   | { v: 1; type: "SURRENDER_REQUEST"; requestId: string }
+  | { v: 1; type: "REMATCH_REQUEST"; requestId: string }
   | { v: 1; type: "PING"; requestId: string; sentAt: number };
 
 export type PublicEvent =
   | { type: "MOVE_CONFIRMED"; actor: PlayerId; at: string }
   | { type: "CLASH_OCCURRED"; actor: PlayerId; position: Coordinate; at: string }
+  | { type: "TURN_TIMED_OUT"; actor: PlayerId; reason: "TIMEOUT"; timeoutCount: number; at: string }
   | { type: "PLAYER_ELIMINATED"; actor: PlayerId; reason: "FLAG_LOST" | "SURRENDER" | "TIMEOUT" | "NO_LEGAL_MOVE"; at: string };
 
 export interface RoomPlayer {

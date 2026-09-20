@@ -145,6 +145,8 @@ input:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.turn-status strong.is-urgent { color: #b64432; }
+
 .turn-status small {
   color: #77847c;
   font-size: 11px;
@@ -608,6 +610,47 @@ input:focus-visible {
 }
 
 .confirm-dialog { width: min(440px, 100%); }
+
+.result-overlay { background: rgba(6, 20, 11, 0.72); }
+
+.result-dialog {
+  width: min(460px, 100%);
+  text-align: center;
+}
+
+.result-dialog__mark {
+  width: 74px;
+  height: 74px;
+  margin: 18px auto 10px;
+  border: 2px solid #b49a58;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #28533a;
+  background: #ebe3cb;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 38px;
+  font-weight: 900;
+}
+
+.result-dialog p {
+  margin: 10px 0 0;
+  color: #5b675f;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.result-dialog__votes {
+  margin-top: 18px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: #35523f;
+  background: #e4e8d7;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.result-dialog .dialog__actions { justify-content: center; }
 
 .dialog__actions {
   margin-top: 24px;

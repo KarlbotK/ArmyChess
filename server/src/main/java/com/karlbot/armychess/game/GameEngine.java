@@ -6,10 +6,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 public final class GameEngine {
+    public static final long TURN_DURATION_MILLIS = 30_000;
+    public static final int MAX_TIMEOUTS = 5;
     private static final Map<PieceType, Integer> REQUIRED_COUNTS = Map.ofEntries(
             Map.entry(PieceType.MARSHAL, 1),
             Map.entry(PieceType.GENERAL, 1),
@@ -29,10 +32,14 @@ public final class GameEngine {
 
     private final Map<Position, PieceState> board = new HashMap<>();
     private final Set<Integer> submitted = new HashSet<>();
+    private final Set<Integer> rematchVotes = new HashSet<>();
     private final boolean[] alive = {true, true, true, true};
+    private final int[] timeoutCounts = new int[4];
     private Phase phase = Phase.LAYOUT;
     private int currentTurn;
     private long revision = 1;
+    private Long turnDeadlineEpochMs;
+    private String winnerTeam;
 
     public synchronized void submitLayout(int player, List<PiecePlacement> placements) {
         requirePlayer(player);
@@ -49,7 +56,11 @@ public final class GameEngine {
         board.putAll(next);
         submitted.add(player);
         revision++;
-        if (submitted.size() == 4) phase = Phase.PLAYING;
+        if (submitted.size() == 4) {
+            phase = Phase.PLAYING;
+            currentTurn = 0;
+            resetTurnDeadline(System.currentTimeMillis());
+        }
     }
 
     private void validateLayout(int player, List<PiecePlacement> placements) {
@@ -106,7 +117,10 @@ public final class GameEngine {
             event = resolveBattle(attacker, defender, to);
         }
         revision++;
-        if (phase == Phase.PLAYING) advanceTurn();
+        if (phase == Phase.PLAYING) {
+            advanceTurn();
+            resetTurnDeadline(System.currentTimeMillis());
+        }
         return event;
     }
 
@@ -145,8 +159,40 @@ public final class GameEngine {
         if (!alive[player]) throw new GameRuleException("PLAYER_ELIMINATED", "玩家已经出局");
         eliminate(player, "SURRENDER");
         revision++;
-        if (phase == Phase.PLAYING) advanceTurn();
+        if (phase == Phase.PLAYING) {
+            advanceTurn();
+            resetTurnDeadline(System.currentTimeMillis());
+        }
         return PublicGameEvent.eliminated(player, "SURRENDER");
+    }
+
+    public synchronized Optional<PublicGameEvent> expireTurn(long nowEpochMs) {
+        if (phase != Phase.PLAYING || turnDeadlineEpochMs == null || nowEpochMs < turnDeadlineEpochMs) {
+            return Optional.empty();
+        }
+        int timedOutPlayer = currentTurn;
+        timeoutCounts[timedOutPlayer]++;
+        PublicGameEvent event;
+        if (timeoutCounts[timedOutPlayer] >= MAX_TIMEOUTS) {
+            eliminate(timedOutPlayer, "TIMEOUT");
+            event = PublicGameEvent.eliminated(timedOutPlayer, "TIMEOUT");
+        } else {
+            event = PublicGameEvent.timedOut(timedOutPlayer, timeoutCounts[timedOutPlayer]);
+        }
+        revision++;
+        if (phase == Phase.PLAYING) advanceTurn();
+        resetTurnDeadline(nowEpochMs);
+        return Optional.of(event);
+    }
+
+    public synchronized boolean requestRematch(int player) {
+        requirePlayer(player);
+        if (phase != Phase.FINISHED) throw new GameRuleException("WRONG_PHASE", "当前对局尚未结束");
+        if (!rematchVotes.add(player)) return false;
+        revision++;
+        if (rematchVotes.size() < 4) return false;
+        resetForRematch();
+        return true;
     }
 
     private void eliminate(int player, String reason) {
@@ -154,7 +200,11 @@ public final class GameEngine {
         board.entrySet().removeIf(entry -> entry.getValue().owner() == player);
         boolean northSouth = alive[0] || alive[2];
         boolean eastWest = alive[1] || alive[3];
-        if (!northSouth || !eastWest) phase = Phase.FINISHED;
+        if (!northSouth || !eastWest) {
+            phase = Phase.FINISHED;
+            winnerTeam = northSouth ? "NORTH_SOUTH" : "EAST_WEST";
+            turnDeadlineEpochMs = null;
+        }
     }
 
     private void advanceTurn() {
@@ -179,11 +229,34 @@ public final class GameEngine {
             PieceType visibleType = piece.owner() == viewer || piece.revealed() ? piece.type() : null;
             views.add(new PieceView(piece.id(), piece.owner(), piece.position(), visibleType, visibleType != null));
         }
-        return new GameSnapshot(phase.name(), viewer, currentTurn, revision, List.copyOf(views));
+        return new GameSnapshot(
+                phase.name(), viewer, currentTurn, revision, List.copyOf(views), turnDeadlineEpochMs,
+                List.of(alive[0], alive[1], alive[2], alive[3]),
+                List.of(timeoutCounts[0], timeoutCounts[1], timeoutCounts[2], timeoutCounts[3]),
+                winnerTeam, rematchVotes.size());
     }
 
     public synchronized Phase phase() { return phase; }
     public synchronized long revision() { return revision; }
+
+    private void resetTurnDeadline(long nowEpochMs) {
+        turnDeadlineEpochMs = phase == Phase.PLAYING ? nowEpochMs + TURN_DURATION_MILLIS : null;
+    }
+
+    private void resetForRematch() {
+        board.clear();
+        submitted.clear();
+        rematchVotes.clear();
+        for (int player = 0; player < 4; player++) {
+            alive[player] = true;
+            timeoutCounts[player] = 0;
+        }
+        phase = Phase.LAYOUT;
+        currentTurn = 0;
+        winnerTeam = null;
+        turnDeadlineEpochMs = null;
+        revision++;
+    }
 
     private static void requirePlayer(int player) {
         if (player < 0 || player > 3) throw new GameRuleException("INVALID_PLAYER", "玩家编号不正确");

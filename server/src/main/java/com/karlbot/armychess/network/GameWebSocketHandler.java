@@ -9,6 +9,7 @@ import com.karlbot.armychess.room.GameRoom;
 import com.karlbot.armychess.room.PlayerSlot;
 import com.karlbot.armychess.room.RoomRegistry;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -106,6 +107,12 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
                     broadcast(room, envelope("PUBLIC_EVENT", "event", event));
                     broadcastSnapshots(room);
                 }
+                case "REMATCH_REQUEST" -> {
+                    room.engine().requestRematch(playerId);
+                    acknowledge(session, requestId);
+                    broadcastRoomState(room);
+                    broadcastSnapshots(room);
+                }
                 case "CHAT_SEND" -> {
                     if (!player.acceptChat()) throw new GameRuleException("CHAT_RATE_LIMITED", "消息发送太快，请稍后再试");
                     String text = chatText(input.path("text").asText(""));
@@ -140,6 +147,17 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         if (session.isOpen()) session.close(CloseStatus.SERVER_ERROR);
+    }
+
+    @Scheduled(fixedRate = 500)
+    public void expireOverdueTurns() {
+        long now = System.currentTimeMillis();
+        for (GameRoom room : rooms.all()) {
+            room.engine().expireTurn(now).ifPresent(event -> {
+                broadcast(room, envelope("PUBLIC_EVENT", "event", event));
+                broadcastSnapshots(room);
+            });
+        }
     }
 
     private Connection authenticate(URI uri) {
@@ -220,7 +238,9 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void send(WebSocketSession session, Object payload) throws IOException {
-        session.sendMessage(new TextMessage(json.writeValueAsString(payload)));
+        synchronized (session) {
+            if (session.isOpen()) session.sendMessage(new TextMessage(json.writeValueAsString(payload)));
+        }
     }
 
     private void sendQuietly(WebSocketSession session, Object payload) {

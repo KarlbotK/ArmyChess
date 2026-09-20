@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
@@ -34,6 +35,10 @@ public final class RoomRegistry {
 
     public Optional<GameRoom> find(String code) {
         return Optional.ofNullable(rooms.get(normalizeCode(code)));
+    }
+
+    public List<GameRoom> all() {
+        return List.copyOf(rooms.values());
     }
 
     private String token() {

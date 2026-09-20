@@ -33,6 +33,11 @@ export interface GameSnapshot {
   currentTurn: PlayerId;
   pieces: PieceView[];
   revision: number;
+  turnDeadlineEpochMs: number | null;
+  alive: boolean[];
+  timeoutCounts: number[];
+  winnerTeam: "NORTH_SOUTH" | "EAST_WEST" | null;
+  rematchVotes: number;
 }
 
 export const PIECE_LABELS: Record<PieceType, string> = {

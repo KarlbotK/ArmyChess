@@ -19,7 +19,7 @@ export function RulesDialog({ open, onClose }: RulesDialogProps) {
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭规则"><X /></button>
         </div>
         <div className="rules-grid">
-          <article><strong>四方轮转</strong><p>南家 → 西家 → 北家 → 东家依次执棋；南北为一队，东西为一队，不能攻击队友。</p></article>
+          <article><strong>四方轮转</strong><p>南家 → 西家 → 北家 → 东家依次执棋；南北为一队，东西为一队，不能攻击队友。每步 30 秒，超时自动跳过，累计 5 次出局。</p></article>
           <article><strong>布阵限制</strong><p>每方 25 枚。军旗只能放在两个大本营之一；地雷只能放最后两排；炸弹不能放第一排；行营必须留空。</p></article>
           <article><strong>大小顺序</strong><p>司令、军长、师长、旅长、团长、营长、连长、排长、工兵依次由大到小；同级相遇同归于尽。</p></article>
           <article><strong>特殊棋子</strong><p>工兵可以排雷；其他活动棋子碰地雷会阵亡；炸弹与任何棋子相遇都同归于尽；军旗、地雷不能移动。</p></article>
@@ -54,6 +54,35 @@ export function SurrenderDialog({ open, onClose, onConfirm }: ConfirmDialogProps
         <div className="dialog__actions">
           <button className="button button--quiet" type="button" onClick={onClose}>继续对局</button>
           <button className="button button--danger" type="button" onClick={onConfirm}>确认投降</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+interface ResultDialogProps {
+  open: boolean;
+  won: boolean;
+  winnerLabel: string;
+  requested: boolean;
+  voteCount: number;
+  onRematch: () => void;
+  onLeave: () => void;
+}
+
+export function ResultDialog({ open, won, winnerLabel, requested, voteCount, onRematch, onLeave }: ResultDialogProps) {
+  if (!open) return null;
+  return (
+    <div className="overlay result-overlay" role="presentation">
+      <section className="dialog result-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title">
+        <span className="eyebrow">本局结束</span>
+        <div className="result-dialog__mark" aria-hidden="true">{won ? "胜" : "负"}</div>
+        <h2 id="result-title">{won ? "并肩取胜" : "胜负已定"}</h2>
+        <p>{winnerLabel}赢得本局。暗棋身份仍然保密，对局记录不会显示谁击败了谁。</p>
+        <div className="result-dialog__votes">再来一局：{voteCount}/4 已准备</div>
+        <div className="dialog__actions">
+          <button className="button button--quiet" type="button" onClick={onLeave}>返回大厅</button>
+          <button className="button button--primary" type="button" onClick={onRematch} disabled={requested}>{requested ? "等待其他玩家" : "再来一局"}</button>
         </div>
       </section>
     </div>

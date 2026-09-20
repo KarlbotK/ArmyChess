@@ -7,5 +7,10 @@ public record GameSnapshot(
         int viewer,
         int currentTurn,
         long revision,
-        List<PieceView> pieces
+        List<PieceView> pieces,
+        Long turnDeadlineEpochMs,
+        List<Boolean> alive,
+        List<Integer> timeoutCounts,
+        String winnerTeam,
+        int rematchVotes
 ) {}

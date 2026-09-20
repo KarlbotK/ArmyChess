@@ -47,6 +47,11 @@ export class DemoGame {
       viewer,
       currentTurn: 0,
       revision: this.revision,
+      turnDeadlineEpochMs: Date.now() + 30_000,
+      alive: [true, true, true, true],
+      timeoutCounts: [0, 0, 0, 0],
+      winnerTeam: null,
+      rematchVotes: 0,
       pieces: this.pieces.map((piece) => ({
         id: piece.id,
         owner: piece.owner,

@@ -72,6 +72,43 @@ class GameEnginePrivacyTest {
     }
 
     @Test
+    void serverDeadlineSkipsTimedOutTurnsAndEliminatesAfterFiveStrikes() {
+        GameEngine engine = startedGame();
+
+        for (int timeout = 0; timeout < 17; timeout++) {
+            GameSnapshot before = engine.snapshotFor(0);
+            assertThat(before.turnDeadlineEpochMs()).isNotNull();
+            engine.expireTurn(before.turnDeadlineEpochMs()).orElseThrow();
+        }
+
+        GameSnapshot snapshot = engine.snapshotFor(0);
+        assertThat(snapshot.alive().get(0)).isFalse();
+        assertThat(snapshot.timeoutCounts().get(0)).isEqualTo(GameEngine.MAX_TIMEOUTS);
+        assertThat(snapshot.phase()).isEqualTo("PLAYING");
+    }
+
+    @Test
+    void allFourPlayersCanVoteToResetFinishedRoomForRematch() {
+        GameEngine engine = startedGame();
+        engine.surrender(0);
+        engine.surrender(2);
+
+        GameSnapshot finished = engine.snapshotFor(1);
+        assertThat(finished.phase()).isEqualTo("FINISHED");
+        assertThat(finished.winnerTeam()).isEqualTo("EAST_WEST");
+
+        for (int player = 0; player < 4; player++) engine.requestRematch(player);
+
+        GameSnapshot reset = engine.snapshotFor(0);
+        assertThat(reset.phase()).isEqualTo("LAYOUT");
+        assertThat(reset.pieces()).isEmpty();
+        assertThat(reset.alive()).containsExactly(true, true, true, true);
+        assertThat(reset.timeoutCounts()).containsExactly(0, 0, 0, 0);
+        assertThat(reset.winnerTeam()).isNull();
+        assertThat(reset.rematchVotes()).isZero();
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void marshalDeathRevealsItsFlagWithoutRevealingOtherPieces() throws Exception {
         GameEngine engine = new GameEngine();

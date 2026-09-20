@@ -78,7 +78,7 @@
 
 `expectedRevision` 防止旧画面的动作覆盖新棋局；不一致时返回 `STALE_STATE`。
 
-### 聊天与投降
+### 聊天、投降与再战
 
 ```json
 { "v": 1, "type": "CHAT_SEND", "requestId": "uuid", "text": "右路我来守" }
@@ -87,6 +87,12 @@
 ```json
 { "v": 1, "type": "SURRENDER_REQUEST", "requestId": "uuid" }
 ```
+
+```json
+{ "v": 1, "type": "REMATCH_REQUEST", "requestId": "uuid" }
+```
+
+四位玩家都提交再战请求后，服务端清空上一局私有棋盘、超时次数和结算状态，原房间回到布阵阶段。
 
 ## 4. 服务端消息
 
@@ -98,6 +104,8 @@
 - `ACTION_ACCEPTED`：动作已接收；
 - `ACTION_REJECTED`：动作未执行，包含稳定错误码；
 - `PONG`：心跳响应。
+
+`SNAPSHOT` 还包含服务端权威的 `turnDeadlineEpochMs`、四方 `alive` 状态、`timeoutCounts`、`winnerTeam` 与 `rematchVotes`。每回合 30 秒；到期由服务端自动换手并发送 `TURN_TIMED_OUT`，累计 5 次超时后发送原因是 `TIMEOUT` 的 `PLAYER_ELIMINATED`。
 
 公开交锋事件示例：
 
