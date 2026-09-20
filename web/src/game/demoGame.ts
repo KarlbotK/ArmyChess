@@ -1,10 +1,12 @@
-import { keyOf, legalDestinations, type BoardPiece } from "./board";
+import { keyOf, legalDestinations, legalMoveOptions, type BoardPiece, type LegalMoveOption } from "./board";
 import { createDefaultLayout } from "./layout";
 import type { Coordinate, GameSnapshot, PieceType, PlayerId } from "./types";
 
 export type PublicGameEvent =
   | { kind: "MOVE_CONFIRMED"; actor: PlayerId; at: string }
   | { kind: "CLASH_OCCURRED"; actor: PlayerId; position: Coordinate; at: string };
+
+export type DemoScenario = "standard" | "sapper-route" | "flag-capture" | "no-legal-move";
 
 const RANK: Record<PieceType, number> = {
   MARSHAL: 40,
@@ -30,6 +32,15 @@ function createArmy(player: PlayerId) {
   }));
 }
 
+function createScenario(scenario: DemoScenario) {
+  if (scenario !== "sapper-route") return ([0, 1, 2, 3] as PlayerId[]).flatMap(createArmy);
+  return [
+    { id: "scenario-sapper", owner: 0, type: "SAPPER", position: { x: 10, y: 12 } },
+    { id: "scenario-blocker", owner: 0, type: "MARSHAL", position: { x: 10, y: 11 } },
+    { id: "scenario-target", owner: 1, type: "CAPTAIN", position: { x: 12, y: 10 } },
+  ] satisfies BoardPiece[];
+}
+
 function judge(attacker: PieceType, defender: PieceType) {
   if (defender === "FLAG") return 1;
   if (attacker === "BOMB" || defender === "BOMB") return 0;
@@ -38,8 +49,12 @@ function judge(attacker: PieceType, defender: PieceType) {
 }
 
 export class DemoGame {
-  private pieces = ([0, 1, 2, 3] as PlayerId[]).flatMap(createArmy);
+  private pieces: BoardPiece[];
   private revision = 1;
+
+  constructor(scenario: DemoScenario = "standard") {
+    this.pieces = createScenario(scenario);
+  }
 
   snapshotFor(viewer: PlayerId): GameSnapshot {
     return {
@@ -70,6 +85,12 @@ export class DemoGame {
     const piece = this.pieces.find(({ id }) => id === pieceId);
     if (!piece || piece.owner !== 0) return [];
     return legalDestinations(piece, this.pieces);
+  }
+
+  moveOptions(pieceId: string): LegalMoveOption[] {
+    const piece = this.pieces.find(({ id }) => id === pieceId);
+    if (!piece || piece.owner !== 0) return [];
+    return legalMoveOptions(piece, this.pieces);
   }
 
   move(pieceId: string, to: Coordinate): { snapshot: GameSnapshot; event: PublicGameEvent } {

@@ -10,10 +10,15 @@ public final class PieceState {
     private boolean revealed;
 
     public PieceState(String id, PieceType type, int owner, Position position) {
+        this(id, type, owner, position, false);
+    }
+
+    PieceState(String id, PieceType type, int owner, Position position, boolean revealed) {
         this.id = Objects.requireNonNull(id);
         this.type = Objects.requireNonNull(type);
         this.owner = owner;
         this.position = Objects.requireNonNull(position);
+        this.revealed = revealed;
     }
 
     public String id() { return id; }

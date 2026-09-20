@@ -19,3 +19,5 @@ web/.vite/
 !.env.example
 *.log
 output/
+.playwright-cli/
+server/data/

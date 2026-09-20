@@ -89,6 +89,7 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
                     List<PiecePlacement> placements = json.treeToValue(input.path("placements"),
                             json.getTypeFactory().constructCollectionType(List.class, PiecePlacement.class));
                     room.engine().submitLayout(playerId, placements);
+                    rooms.persist(room);
                     acknowledge(session, requestId);
                     broadcastSnapshots(room);
                 }
@@ -97,18 +98,21 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
                     String pieceId = requiredText(input, "pieceId", 80);
                     Position to = json.treeToValue(input.path("to"), Position.class);
                     List<PublicGameEvent> events = room.engine().move(playerId, pieceId, to);
+                    rooms.persist(room);
                     acknowledge(session, requestId);
                     broadcastEvents(room, events);
                     broadcastSnapshots(room);
                 }
                 case "SURRENDER_REQUEST" -> {
                     List<PublicGameEvent> events = room.engine().surrender(playerId);
+                    rooms.persist(room);
                     acknowledge(session, requestId);
                     broadcastEvents(room, events);
                     broadcastSnapshots(room);
                 }
                 case "REMATCH_REQUEST" -> {
                     room.engine().requestRematch(playerId);
+                    rooms.persist(room);
                     acknowledge(session, requestId);
                     broadcastRoomState(room);
                     broadcastSnapshots(room);
@@ -154,6 +158,7 @@ public final class GameWebSocketHandler extends TextWebSocketHandler {
         long now = System.currentTimeMillis();
         for (GameRoom room : rooms.all()) {
             room.engine().expireTurn(now).ifPresent(events -> {
+                rooms.persist(room);
                 broadcastEvents(room, events);
                 broadcastSnapshots(room);
             });

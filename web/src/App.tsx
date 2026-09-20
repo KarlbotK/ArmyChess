@@ -13,7 +13,7 @@ import { Lobby } from "./components/Lobby";
 import { OnlineGame } from "./components/OnlineGame";
 import { ChatDrawer, RulesDialog, SurrenderDialog } from "./components/Overlays";
 import { PlayerPlate } from "./components/PlayerPlate";
-import { DemoGame } from "./game/demoGame";
+import { DemoGame, type DemoScenario } from "./game/demoGame";
 import { keyOf } from "./game/board";
 import { PLAYER_META, type Coordinate } from "./game/types";
 import type { SessionTicket } from "./network/rooms";
@@ -24,20 +24,31 @@ const INITIAL_ACTIVITY: ActivityItem[] = [
   { id: "a3", text: "东家进入行营", time: "20:06", tone: "coral" },
 ];
 
+function scenarioActivity(scenario: DemoScenario): ActivityItem[] {
+  if (scenario === "flag-capture") {
+    return [{ id: "flag-capture", text: "西家军旗被擒获，全军覆没", time: "现在", tone: "blue" }];
+  }
+  if (scenario === "no-legal-move") {
+    return [{ id: "no-legal-move", text: "北家无棋可走，全军覆没", time: "现在", tone: "coral" }];
+  }
+  return INITIAL_ACTIVITY;
+}
+
 function currentTime() {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 }
 
-function DemoGameScreen() {
+function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
   const gameRef = useRef<DemoGame | null>(null);
-  if (!gameRef.current) gameRef.current = new DemoGame();
+  if (!gameRef.current) gameRef.current = new DemoGame(scenario);
   const game = gameRef.current;
 
   const [snapshot, setSnapshot] = useState(() => game.snapshotFor(0));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [legalMoves, setLegalMoves] = useState<Coordinate[]>([]);
+  const [legalRoutes, setLegalRoutes] = useState<Record<string, Coordinate[]>>({});
   const [seconds, setSeconds] = useState(24);
-  const [activity, setActivity] = useState(INITIAL_ACTIVITY);
+  const [activity, setActivity] = useState(() => scenarioActivity(scenario));
   const [rulesOpen, setRulesOpen] = useState(false);
   const [surrenderOpen, setSurrenderOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -47,9 +58,14 @@ function DemoGameScreen() {
   useEffect(() => {
     const initial = game.firstPlayablePiece(0);
     if (initial) {
+      const options = game.moveOptions(initial);
+      const selected = game.snapshotFor(0).pieces.find(({ id }) => id === initial);
       setSelectedId(initial);
-      setLegalMoves(game.legalMoves(initial));
-      setToast("已为你标出可走位置");
+      setLegalMoves(options.map(({ destination }) => destination));
+      setLegalRoutes(selected?.visibleType === "SAPPER"
+        ? Object.fromEntries(options.map(({ destination, route }) => [keyOf(destination), route]))
+        : {});
+      setToast(selected?.visibleType === "SAPPER" ? "已标出工兵铁路路线" : "已为你标出可走位置");
     }
   }, [game]);
 
@@ -73,12 +89,19 @@ function DemoGameScreen() {
     if (selectedId === pieceId) {
       setSelectedId(null);
       setLegalMoves([]);
+      setLegalRoutes({});
       return;
     }
-    const nextMoves = game.legalMoves(pieceId);
+    const options = game.moveOptions(pieceId);
+    const nextMoves = options.map(({ destination }) => destination);
     setSelectedId(pieceId);
     setLegalMoves(nextMoves);
-    setToast(nextMoves.length > 0 ? `可走 ${nextMoves.length} 个位置` : "这枚棋子当前无法移动");
+    setLegalRoutes(piece.visibleType === "SAPPER"
+      ? Object.fromEntries(options.map(({ destination, route }) => [keyOf(destination), route]))
+      : {});
+    setToast(nextMoves.length > 0
+      ? piece.visibleType === "SAPPER" ? `可走 ${nextMoves.length} 个位置，悬停落点查看路线` : `可走 ${nextMoves.length} 个位置`
+      : "这枚棋子当前无法移动");
   };
 
   const handleMove = (to: Coordinate) => {
@@ -88,6 +111,7 @@ function DemoGameScreen() {
       setSnapshot(result.snapshot);
       setSelectedId(null);
       setLegalMoves([]);
+      setLegalRoutes({});
       setSeconds(30);
       const isClash = result.event.kind === "CLASH_OCCURRED";
       setActivity((items) => [{
@@ -148,6 +172,7 @@ function DemoGameScreen() {
             pieces={snapshot.pieces}
             selectedId={selectedId}
             legalMoves={legalMoves}
+            legalRoutes={legalRoutes}
             onSelect={handleSelect}
             onMove={handleMove}
           />
@@ -184,8 +209,13 @@ function restoredSession(): SessionTicket | null {
 
 export function App() {
   const [ticket, setTicket] = useState<SessionTicket | null>(() => restoredSession());
-  const [demo, setDemo] = useState(() => new URLSearchParams(window.location.search).get("demo") === "1");
-  if (demo) return <DemoGameScreen />;
+  const search = new URLSearchParams(window.location.search);
+  const [demo, setDemo] = useState(() => search.get("demo") === "1");
+  const requestedScenario = search.get("scenario");
+  const scenario: DemoScenario = requestedScenario === "sapper-route" || requestedScenario === "flag-capture" || requestedScenario === "no-legal-move"
+    ? requestedScenario
+    : "standard";
+  if (demo) return <DemoGameScreen scenario={scenario} />;
   if (ticket) return <OnlineGame ticket={ticket} onLeave={() => { sessionStorage.removeItem("armychess.session"); setTicket(null); }} />;
   return <Lobby onEnter={setTicket} onDemo={() => setDemo(true)} />;
 }

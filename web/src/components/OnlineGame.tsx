@@ -1,6 +1,6 @@
 import { BookOpen, Check, CopySimple, Flag, Mountains, WifiHigh } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { keyOf, legalDestinations, type BoardPiece } from "../game/board";
+import { keyOf, legalMoveOptions, type BoardPiece } from "../game/board";
 import {
   createDefaultLayout,
   fromViewer,
@@ -46,6 +46,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
   const playersRef = useRef(players);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [legalMoves, setLegalMoves] = useState<Coordinate[]>([]);
+  const [legalRoutes, setLegalRoutes] = useState<Record<string, Coordinate[]>>({});
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [chatMessages, setChatMessages] = useState<string[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -83,6 +84,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
         if (previous.currentTurn !== message.snapshot.currentTurn || previous.phase !== message.snapshot.phase) {
           setSelectedId(null);
           setLegalMoves([]);
+          setLegalRoutes({});
         }
         if (previous.phase === "FINISHED" && message.snapshot.phase === "LAYOUT") {
           setSubmitted(false);
@@ -195,6 +197,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     if (snapshot.currentTurn !== ticket.playerId) {
       setSelectedId(null);
       setLegalMoves([]);
+      setLegalRoutes({});
       setToast(`现在是${PLAYER_META[snapshot.currentTurn].direction}回合`);
       return;
     }
@@ -206,10 +209,20 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
       type: candidate.visibleType ?? "CAPTAIN",
       position: candidate.position,
     }));
-    const rawMoves = legalDestinations({ id: piece.id, owner: piece.owner, type: piece.visibleType, position: piece.position }, board);
+    const options = legalMoveOptions({ id: piece.id, owner: piece.owner, type: piece.visibleType, position: piece.position }, board);
+    const rawMoves = options.map(({ destination }) => destination);
+    const displayRoutes = piece.visibleType === "SAPPER"
+      ? Object.fromEntries(options.map(({ destination, route }) => {
+        const displayDestination = rotateForViewer(destination, ticket.playerId);
+        return [keyOf(displayDestination), route.map((point) => rotateForViewer(point, ticket.playerId))];
+      }))
+      : {};
     setSelectedId(pieceId);
     setLegalMoves(rawMoves.map((move) => rotateForViewer(move, ticket.playerId)));
-    setToast(rawMoves.length ? `可走 ${rawMoves.length} 个位置` : "这枚棋子当前无法移动");
+    setLegalRoutes(displayRoutes);
+    setToast(rawMoves.length
+      ? piece.visibleType === "SAPPER" ? `可走 ${rawMoves.length} 个位置，悬停落点查看路线` : `可走 ${rawMoves.length} 个位置`
+      : "这枚棋子当前无法移动");
   };
 
   const handleMove = (displayPosition: Coordinate) => {
@@ -223,6 +236,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     });
     setSelectedId(null);
     setLegalMoves([]);
+    setLegalRoutes({});
   };
 
   const randomizeLayout = () => {
@@ -273,7 +287,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
             const joined = players.find(({ playerId }) => playerId === player);
             return <PlayerPlate key={player} player={player} position={seat} name={joined?.nickname ?? "等待加入"} self={player === ticket.playerId} active={snapshot.currentTurn === player && snapshot.phase === "PLAYING"} online={Boolean(joined)} />;
           })}
-          <GameBoard pieces={displayPieces} selectedId={selectedId} legalMoves={legalMoves} onSelect={handleSelect} onMove={handleMove} />
+          <GameBoard pieces={displayPieces} selectedId={selectedId} legalMoves={legalMoves} legalRoutes={legalRoutes} onSelect={handleSelect} onMove={handleMove} />
           {snapshot.phase === "LAYOUT" && players.length < 4 && <div className="waiting-card"><span className="eyebrow">私人房间 {ticket.roomCode}</span><h2>等待朋友落座</h2><p>已有 {players.length} 位玩家。四人到齐后进入布阵，所有人确认阵型才会开局。</p></div>}
           {snapshot.phase === "LAYOUT" && players.length === 4 && <LayoutPanel status={layoutStatus} submitted={submitted} submittedCount={submittedCount} onRandomize={randomizeLayout} onSubmit={submitLayout} />}
         </section>

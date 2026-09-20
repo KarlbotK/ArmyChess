@@ -41,6 +41,57 @@ public final class GameEngine {
     private Long turnDeadlineEpochMs;
     private String winnerTeam;
 
+    public static GameEngine restore(GameEngineState state) {
+        if (state == null || state.schemaVersion() != GameEngineState.CURRENT_SCHEMA_VERSION) {
+            throw new IllegalArgumentException("unsupported game state");
+        }
+        if (state.phase() == null || state.alivePlayers() == null || state.alivePlayers().size() != 4
+                || state.timeoutCounts() == null || state.timeoutCounts().size() != 4) {
+            throw new IllegalArgumentException("invalid game state");
+        }
+
+        GameEngine engine = new GameEngine();
+        engine.phase = state.phase();
+        engine.currentTurn = state.currentTurn();
+        requirePlayer(engine.currentTurn);
+        engine.revision = Math.max(1, state.revision());
+        engine.turnDeadlineEpochMs = state.turnDeadlineEpochMs();
+        engine.winnerTeam = state.winnerTeam();
+        for (GameEngineState.PersistedPiece piece : state.pieces()) {
+            PieceState restored = new PieceState(
+                    piece.id(), piece.type(), piece.owner(), piece.position(), piece.revealed());
+            if (engine.board.put(restored.position(), restored) != null) {
+                throw new IllegalArgumentException("duplicate persisted position");
+            }
+        }
+        engine.submitted.addAll(state.submittedPlayers());
+        engine.rematchVotes.addAll(state.rematchVotes());
+        for (int player = 0; player < 4; player++) {
+            engine.alive[player] = state.alivePlayers().get(player);
+            engine.timeoutCounts[player] = state.timeoutCounts().get(player);
+        }
+        return engine;
+    }
+
+    public synchronized GameEngineState snapshotState() {
+        List<GameEngineState.PersistedPiece> pieces = board.values().stream()
+                .map(piece -> new GameEngineState.PersistedPiece(
+                        piece.id(), piece.type(), piece.owner(), piece.position(), piece.revealed()))
+                .toList();
+        return new GameEngineState(
+                GameEngineState.CURRENT_SCHEMA_VERSION,
+                phase,
+                currentTurn,
+                revision,
+                turnDeadlineEpochMs,
+                winnerTeam,
+                pieces,
+                submitted.stream().sorted().toList(),
+                List.of(alive[0], alive[1], alive[2], alive[3]),
+                List.of(timeoutCounts[0], timeoutCounts[1], timeoutCounts[2], timeoutCounts[3]),
+                rematchVotes.stream().sorted().toList());
+    }
+
     public synchronized void submitLayout(int player, List<PiecePlacement> placements) {
         requirePlayer(player);
         if (phase != Phase.LAYOUT) throw new GameRuleException("WRONG_PHASE", "当前不在布阵阶段");

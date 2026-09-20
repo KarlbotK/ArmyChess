@@ -4,6 +4,7 @@ import {
   isHeadquarters,
   isTeammate,
   legalDestinations,
+  legalMoveOptions,
   STATIONS,
   territoryOwner,
   type BoardPiece,
@@ -49,6 +50,18 @@ describe("classic four-player board", () => {
     const blocker: BoardPiece = { id: "blocker", owner: 0, type: "MARSHAL", position: { x: 10, y: 11 } };
 
     expect(legalDestinations(sapper, [sapper, blocker])).toContainEqual({ x: 12, y: 10 });
+  });
+
+  it("returns the actual unblocked route used by an engineer", () => {
+    const sapper: BoardPiece = { id: "sapper", owner: 0, type: "SAPPER", position: { x: 10, y: 12 } };
+    const blocker: BoardPiece = { id: "blocker", owner: 0, type: "MARSHAL", position: { x: 10, y: 11 } };
+    const option = legalMoveOptions(sapper, [sapper, blocker])
+      .find(({ destination }) => destination.x === 12 && destination.y === 10);
+
+    expect(option?.route[0]).toEqual(sapper.position);
+    expect(option?.route.at(-1)).toEqual({ x: 12, y: 10 });
+    expect(option?.route).not.toContainEqual(blocker.position);
+    expect(option?.route.length).toBeGreaterThan(10);
   });
 
   it("does not let an engineer pass when every railway exit is blocked", () => {

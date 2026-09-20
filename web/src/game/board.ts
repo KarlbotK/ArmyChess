@@ -141,6 +141,7 @@ const VALID_POINTS: Coordinate[] = Array.from({ length: BOARD_SIZE * BOARD_SIZE 
 })).filter(({ x, y }) => isValidPoint(x, y));
 
 const RAIL_POINTS = VALID_POINTS.filter(({ x, y }) => isRail(x, y));
+const RAIL_POINT_BY_KEY = new Map(RAIL_POINTS.map((point) => [keyOf(point), point]));
 const RAIL_NEIGHBORS = new Map(RAIL_POINTS.map((point) => [
   keyOf(point),
   RAIL_POINTS.filter((candidate) => isNeighbor(point, candidate)),
@@ -151,6 +152,11 @@ export interface BoardPiece {
   owner: PlayerId;
   type: PieceType;
   position: Coordinate;
+}
+
+export interface LegalMoveOption {
+  destination: Coordinate;
+  route: Coordinate[];
 }
 
 function pathClear(from: Coordinate, to: Coordinate, occupied: ReadonlySet<string>) {
@@ -202,10 +208,16 @@ function curveClear(from: Coordinate, to: Coordinate, occupied: ReadonlySet<stri
   );
 }
 
-function sapperReachable(from: Coordinate, occupied: ReadonlySet<string>) {
+interface RailwaySearch {
+  reachable: ReadonlySet<string>;
+  predecessor: ReadonlyMap<string, string>;
+}
+
+function sapperSearch(from: Coordinate, occupied: ReadonlySet<string>): RailwaySearch {
   const queue: Coordinate[] = [from];
   const visited = new Set([keyOf(from)]);
   const reachable = new Set<string>();
+  const predecessor = new Map<string, string>();
   while (queue.length > 0) {
     const current = queue.shift()!;
     for (const candidate of RAIL_NEIGHBORS.get(keyOf(current)) ?? []) {
@@ -213,10 +225,25 @@ function sapperReachable(from: Coordinate, occupied: ReadonlySet<string>) {
       if (visited.has(key)) continue;
       visited.add(key);
       reachable.add(key);
+      predecessor.set(key, keyOf(current));
       if (!occupied.has(key)) queue.push(candidate);
     }
   }
-  return reachable;
+  return { reachable, predecessor };
+}
+
+function sapperRoute(from: Coordinate, to: Coordinate, search: RailwaySearch) {
+  const fromKey = keyOf(from);
+  let currentKey = keyOf(to);
+  if (!search.reachable.has(currentKey)) return [];
+  const routeKeys = [currentKey];
+  while (currentKey !== fromKey) {
+    const previous = search.predecessor.get(currentKey);
+    if (!previous) return [];
+    currentKey = previous;
+    routeKeys.push(currentKey);
+  }
+  return routeKeys.reverse().map((key) => RAIL_POINT_BY_KEY.get(key) ?? from);
 }
 
 export function isValidMovePath(
@@ -229,22 +256,33 @@ export function isValidMovePath(
   if (piece.type === "LANDMINE" || piece.type === "FLAG" || isHeadquarters(from.x, from.y)) return false;
   if (isNeighbor(from, to)) return true;
   if (!isRail(from.x, from.y) || !isRail(to.x, to.y)) return false;
-  if (piece.type === "SAPPER") return sapperReachable(from, occupied).has(keyOf(to));
+  if (piece.type === "SAPPER") return sapperSearch(from, occupied).reachable.has(keyOf(to));
   if (from.x === to.x || from.y === to.y) return pathClear(from, to, occupied);
   return curveClear(from, to, occupied);
 }
 
-export function legalDestinations(piece: BoardPiece, pieces: readonly BoardPiece[]) {
+export function legalMoveOptions(piece: BoardPiece, pieces: readonly BoardPiece[]): LegalMoveOption[] {
   const occupied = new Set(pieces.map(({ position }) => keyOf(position)));
-  const reachableBySapper = piece.type === "SAPPER"
+  const sapperRailSearch = piece.type === "SAPPER"
     && isRail(piece.position.x, piece.position.y)
     && !isHeadquarters(piece.position.x, piece.position.y)
-    ? sapperReachable(piece.position, occupied)
+    ? sapperSearch(piece.position, occupied)
     : null;
-  return STATIONS.filter((to) => {
+  return STATIONS.flatMap((to): LegalMoveOption[] => {
     const target = pieces.find(({ position }) => position.x === to.x && position.y === to.y);
-    if (target && (isTeammate(piece.owner, target.owner) || isCamp(to.x, to.y))) return false;
-    if (reachableBySapper && isRail(to.x, to.y)) return reachableBySapper.has(keyOf(to));
-    return isValidMovePath(piece, to, occupied);
+    if (target && (isTeammate(piece.owner, target.owner) || isCamp(to.x, to.y))) return [];
+    const usesSapperRail = sapperRailSearch !== null && isRail(to.x, to.y);
+    const valid = usesSapperRail
+      ? sapperRailSearch.reachable.has(keyOf(to))
+      : isValidMovePath(piece, to, occupied);
+    if (!valid) return [];
+    return [{
+      destination: to,
+      route: usesSapperRail ? sapperRoute(piece.position, to, sapperRailSearch) : [piece.position, to],
+    }];
   });
+}
+
+export function legalDestinations(piece: BoardPiece, pieces: readonly BoardPiece[]) {
+  return legalMoveOptions(piece, pieces).map(({ destination }) => destination);
 }

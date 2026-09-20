@@ -284,6 +284,7 @@ input:focus-visible {
 }
 
 .game-board__canvas,
+.game-board__routes,
 .game-board__pieces {
   position: absolute;
   inset: 0;
@@ -292,6 +293,34 @@ input:focus-visible {
 }
 
 .game-board__canvas { pointer-events: none; }
+
+.game-board__routes {
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.game-board__route-network line {
+  stroke: rgba(245, 211, 105, 0.42);
+  stroke-width: 0.62;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 1.2px rgba(38, 62, 35, 0.75));
+}
+
+.game-board__route-preview {
+  fill: none;
+  stroke: #ffe074;
+  stroke-width: 1.05;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1.5 1.2;
+  filter: drop-shadow(0 0 2px rgba(255, 224, 116, 0.9));
+  animation: route-flow 900ms linear infinite;
+}
+
+@keyframes route-flow {
+  to { stroke-dashoffset: -2.7; }
+}
 
 .game-piece,
 .legal-move {

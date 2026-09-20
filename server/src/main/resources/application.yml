@@ -20,3 +20,4 @@ management:
 
 armychess:
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:4173,http://127.0.0.1:4173}
+  data-dir: ${ARMYCHESS_DATA_DIR:./data/rooms}
