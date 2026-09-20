@@ -12,8 +12,8 @@ export type ClientMessage =
   | { v: 1; type: "PING"; requestId: string; sentAt: number };
 
 export type PublicEvent =
-  | { type: "MOVE_CONFIRMED"; actor: PlayerId; at: string }
-  | { type: "CLASH_OCCURRED"; actor: PlayerId; position: Coordinate; at: string }
+  | { type: "MOVE_CONFIRMED"; actor: PlayerId; path: Coordinate[]; at: string }
+  | { type: "CLASH_OCCURRED"; actor: PlayerId; position: Coordinate; path: Coordinate[]; at: string }
   | { type: "TURN_TIMED_OUT"; actor: PlayerId; reason: "TIMEOUT"; timeoutCount: number; at: string }
   | { type: "PLAYER_ELIMINATED"; actor: PlayerId; reason: "FLAG_LOST" | "SURRENDER" | "TIMEOUT" | "NO_LEGAL_MOVE"; at: string };
 
@@ -35,6 +35,7 @@ export type ServerMessage =
 /**
  * Privacy invariant: public battle events intentionally contain no attacker type,
  * defender type, winner piece, loser piece, or equivalent identity mapping.
+ * A move path contains public board coordinates only and cannot contain piece identity.
  * Hidden information can only arrive through the viewer-scoped snapshot.
  */
 export function isServerMessage(value: unknown): value is ServerMessage {

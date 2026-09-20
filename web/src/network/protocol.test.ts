@@ -18,6 +18,7 @@ describe("hidden-information protocol", () => {
       type: "CLASH_OCCURRED",
       actor: 0,
       position: { x: 8, y: 8 },
+      path: [{ x: 8, y: 10 }, { x: 8, y: 9 }, { x: 8, y: 8 }],
       at: "2026-09-20T00:00:00.000Z",
     };
     const keys = Object.keys(event);
@@ -25,5 +26,6 @@ describe("hidden-information protocol", () => {
     expect(keys).not.toContain("defenderType");
     expect(keys).not.toContain("winnerPiece");
     expect(keys).not.toContain("loserPiece");
+    expect(event.path).toEqual([{ x: 8, y: 10 }, { x: 8, y: 9 }, { x: 8, y: 8 }]);
   });
 });

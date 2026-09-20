@@ -46,7 +46,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
   const playersRef = useRef(players);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [legalMoves, setLegalMoves] = useState<Coordinate[]>([]);
-  const [legalRoutes, setLegalRoutes] = useState<Record<string, Coordinate[]>>({});
+  const [completedRoute, setCompletedRoute] = useState<Coordinate[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [chatMessages, setChatMessages] = useState<string[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -84,13 +84,13 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
         if (previous.currentTurn !== message.snapshot.currentTurn || previous.phase !== message.snapshot.phase) {
           setSelectedId(null);
           setLegalMoves([]);
-          setLegalRoutes({});
         }
         if (previous.phase === "FINISHED" && message.snapshot.phase === "LAYOUT") {
           setSubmitted(false);
           setRematchRequested(false);
           setLayout(createDefaultLayout(ticket.playerId));
           setActivity([]);
+          setCompletedRoute([]);
           setToast("新一局开始，请重新布阵");
         }
         if (message.snapshot.phase === "LAYOUT" && message.snapshot.pieces.filter(({ owner }) => owner === ticket.playerId).length === 25) {
@@ -103,6 +103,10 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
         } else if (message.snapshot.phase === "PLAYING") setToast("对局已同步");
       }
       if (message.type === "PUBLIC_EVENT") {
+        if ((message.event.type === "MOVE_CONFIRMED" || message.event.type === "CLASH_OCCURRED")
+          && message.event.path.length > 1) {
+          setCompletedRoute(message.event.path.map((point) => rotateForViewer(point, ticket.playerId)));
+        }
         const text = publicEventText(message.event);
         setActivity((items) => [{
           id: `${message.event.at}-${message.event.type}`,
@@ -132,6 +136,12 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     const timer = window.setTimeout(() => setToast(""), 2_800);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (completedRoute.length < 2) return;
+    const timer = window.setTimeout(() => setCompletedRoute([]), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [completedRoute]);
 
   useEffect(() => {
     if (snapshot.phase !== "PLAYING" || snapshot.turnDeadlineEpochMs === null) return;
@@ -197,7 +207,6 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     if (snapshot.currentTurn !== ticket.playerId) {
       setSelectedId(null);
       setLegalMoves([]);
-      setLegalRoutes({});
       setToast(`现在是${PLAYER_META[snapshot.currentTurn].direction}回合`);
       return;
     }
@@ -211,17 +220,10 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
     }));
     const options = legalMoveOptions({ id: piece.id, owner: piece.owner, type: piece.visibleType, position: piece.position }, board);
     const rawMoves = options.map(({ destination }) => destination);
-    const displayRoutes = piece.visibleType === "SAPPER"
-      ? Object.fromEntries(options.map(({ destination, route }) => {
-        const displayDestination = rotateForViewer(destination, ticket.playerId);
-        return [keyOf(displayDestination), route.map((point) => rotateForViewer(point, ticket.playerId))];
-      }))
-      : {};
     setSelectedId(pieceId);
     setLegalMoves(rawMoves.map((move) => rotateForViewer(move, ticket.playerId)));
-    setLegalRoutes(displayRoutes);
     setToast(rawMoves.length
-      ? piece.visibleType === "SAPPER" ? `可走 ${rawMoves.length} 个位置，悬停落点查看路线` : `可走 ${rawMoves.length} 个位置`
+      ? `可走 ${rawMoves.length} 个位置`
       : "这枚棋子当前无法移动");
   };
 
@@ -234,9 +236,9 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
       to: fromViewer(displayPosition, ticket.playerId),
       expectedRevision: snapshot.revision,
     });
+    setCompletedRoute([]);
     setSelectedId(null);
     setLegalMoves([]);
-    setLegalRoutes({});
   };
 
   const randomizeLayout = () => {
@@ -287,7 +289,7 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
             const joined = players.find(({ playerId }) => playerId === player);
             return <PlayerPlate key={player} player={player} position={seat} name={joined?.nickname ?? "等待加入"} self={player === ticket.playerId} active={snapshot.currentTurn === player && snapshot.phase === "PLAYING"} online={Boolean(joined)} />;
           })}
-          <GameBoard pieces={displayPieces} selectedId={selectedId} legalMoves={legalMoves} legalRoutes={legalRoutes} onSelect={handleSelect} onMove={handleMove} />
+          <GameBoard pieces={displayPieces} selectedId={selectedId} legalMoves={legalMoves} completedRoute={completedRoute} onSelect={handleSelect} onMove={handleMove} />
           {snapshot.phase === "LAYOUT" && players.length < 4 && <div className="waiting-card"><span className="eyebrow">私人房间 {ticket.roomCode}</span><h2>等待朋友落座</h2><p>已有 {players.length} 位玩家。四人到齐后进入布阵，所有人确认阵型才会开局。</p></div>}
           {snapshot.phase === "LAYOUT" && players.length === 4 && <LayoutPanel status={layoutStatus} submitted={submitted} submittedCount={submittedCount} onRandomize={randomizeLayout} onSubmit={submitLayout} />}
         </section>

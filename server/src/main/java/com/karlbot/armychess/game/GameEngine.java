@@ -157,15 +157,16 @@ public final class GameEngine {
             throw new GameRuleException("ILLEGAL_MOVE", "这一步不符合规则");
         }
 
+        List<Position> path = BoardRules.movePath(attacker, to, board);
         PieceState defender = board.get(to);
         board.remove(attacker.position());
         List<PublicGameEvent> events = new ArrayList<>();
         if (defender == null) {
             attacker.moveTo(to);
             board.put(to, attacker);
-            events.add(PublicGameEvent.move(player));
+            events.add(PublicGameEvent.move(player, path));
         } else {
-            events.addAll(resolveBattle(attacker, defender, to));
+            events.addAll(resolveBattle(attacker, defender, to, path));
         }
         revision++;
         if (phase == Phase.PLAYING) {
@@ -175,7 +176,8 @@ public final class GameEngine {
         return List.copyOf(events);
     }
 
-    private List<PublicGameEvent> resolveBattle(PieceState attacker, PieceState defender, Position target) {
+    private List<PublicGameEvent> resolveBattle(PieceState attacker, PieceState defender, Position target,
+                                                List<Position> path) {
         List<PublicGameEvent> events = new ArrayList<>();
         int result = judge(attacker.type(), defender.type());
         board.remove(target);
@@ -191,7 +193,7 @@ public final class GameEngine {
         } else if (result < 0) {
             board.put(target, defender);
         }
-        events.add(0, PublicGameEvent.clash(attacker.owner(), target));
+        events.add(0, PublicGameEvent.clash(attacker.owner(), target, path));
         return List.copyOf(events);
     }
 

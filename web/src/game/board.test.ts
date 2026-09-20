@@ -93,4 +93,17 @@ describe("classic four-player board", () => {
 
     expect(legalDestinations(bomb, [bomb, marshal])).not.toContainEqual({ x: 12, y: 10 });
   });
+
+  it("returns every traversed junction for an ordinary curved railway move", () => {
+    const captain: BoardPiece = { id: "captain", owner: 0, type: "CAPTAIN", position: { x: 10, y: 12 } };
+    const option = legalMoveOptions(captain, [captain])
+      .find(({ destination }) => destination.x === 12 && destination.y === 10);
+
+    expect(option?.route).toEqual([
+      { x: 10, y: 12 },
+      { x: 10, y: 11 },
+      { x: 11, y: 10 },
+      { x: 12, y: 10 },
+    ]);
+  });
 });

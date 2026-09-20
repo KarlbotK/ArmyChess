@@ -3,10 +3,10 @@ import { createDefaultLayout } from "./layout";
 import type { Coordinate, GameSnapshot, PieceType, PlayerId } from "./types";
 
 export type PublicGameEvent =
-  | { kind: "MOVE_CONFIRMED"; actor: PlayerId; at: string }
-  | { kind: "CLASH_OCCURRED"; actor: PlayerId; position: Coordinate; at: string };
+  | { kind: "MOVE_CONFIRMED"; actor: PlayerId; path: Coordinate[]; at: string }
+  | { kind: "CLASH_OCCURRED"; actor: PlayerId; position: Coordinate; path: Coordinate[]; at: string };
 
-export type DemoScenario = "standard" | "sapper-route" | "flag-capture" | "no-legal-move";
+export type DemoScenario = "standard" | "sapper-route" | "flag-capture" | "no-legal-move" | "timeout-elimination";
 
 const RANK: Record<PieceType, number> = {
   MARSHAL: 40,
@@ -95,20 +95,23 @@ export class DemoGame {
 
   move(pieceId: string, to: Coordinate): { snapshot: GameSnapshot; event: PublicGameEvent } {
     const piece = this.pieces.find(({ id }) => id === pieceId);
-    if (!piece || !this.legalMoves(pieceId).some((candidate) => keyOf(candidate) === keyOf(to))) {
+    const option = piece
+      ? legalMoveOptions(piece, this.pieces).find(({ destination }) => keyOf(destination) === keyOf(to))
+      : undefined;
+    if (!piece || !option) {
       throw new Error("ILLEGAL_MOVE");
     }
     const target = this.pieces.find(({ position }) => keyOf(position) === keyOf(to));
     let event: PublicGameEvent;
     if (!target) {
       piece.position = { ...to };
-      event = { kind: "MOVE_CONFIRMED", actor: piece.owner, at: new Date().toISOString() };
+      event = { kind: "MOVE_CONFIRMED", actor: piece.owner, path: option.route, at: new Date().toISOString() };
     } else {
       const result = judge(piece.type, target.type);
       if (result >= 0) this.pieces = this.pieces.filter(({ id }) => id !== target.id);
       if (result <= 0) this.pieces = this.pieces.filter(({ id }) => id !== piece.id);
       if (result > 0) piece.position = { ...to };
-      event = { kind: "CLASH_OCCURRED", actor: piece.owner, position: { ...to }, at: new Date().toISOString() };
+      event = { kind: "CLASH_OCCURRED", actor: piece.owner, position: { ...to }, path: option.route, at: new Date().toISOString() };
     }
     this.revision += 1;
     return { snapshot: this.snapshotFor(0), event };

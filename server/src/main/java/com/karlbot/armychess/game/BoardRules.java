@@ -2,6 +2,7 @@ package com.karlbot.armychess.game;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,16 @@ public final class BoardRules {
     private static final Set<Position> CAMPS = new HashSet<>();
     private static final Set<Position> RAILS = new HashSet<>();
     private static final Set<Position> HEADQUARTERS = new HashSet<>();
+    private static final List<RouteDefinition> CURVED_ROUTES = List.of(
+            new RouteDefinition(BoardRules::northRight, BoardRules::eastTop, new Position(10, 5), new Position(11, 6)),
+            new RouteDefinition(BoardRules::eastTop, BoardRules::northRight, new Position(11, 6), new Position(10, 5)),
+            new RouteDefinition(BoardRules::eastBottom, BoardRules::southRight, new Position(11, 10), new Position(10, 11)),
+            new RouteDefinition(BoardRules::southRight, BoardRules::eastBottom, new Position(10, 11), new Position(11, 10)),
+            new RouteDefinition(BoardRules::southLeft, BoardRules::westBottom, new Position(6, 11), new Position(5, 10)),
+            new RouteDefinition(BoardRules::westBottom, BoardRules::southLeft, new Position(5, 10), new Position(6, 11)),
+            new RouteDefinition(BoardRules::westTop, BoardRules::northLeft, new Position(5, 6), new Position(6, 5)),
+            new RouteDefinition(BoardRules::northLeft, BoardRules::westTop, new Position(6, 5), new Position(5, 6))
+    );
 
     static {
         addCamps(
@@ -145,10 +156,10 @@ public final class BoardRules {
 
     public static List<Position> legalDestinations(PieceState piece, Map<Position, PieceState> board) {
         List<Position> legal = new ArrayList<>();
-        Set<Position> reachableBySapper = piece.type() == PieceType.SAPPER
+        SapperSearch sapperSearch = piece.type() == PieceType.SAPPER
                 && isRail(piece.position()) && !isHeadquarters(piece.position())
-                ? sapperReachable(piece.position(), board)
-                : Set.of();
+                ? sapperSearch(piece.position(), board)
+                : null;
         for (int y = 0; y < SIZE; y++) {
             for (int x = 0; x < SIZE; x++) {
                 if (!isValidPoint(x, y)) continue;
@@ -156,13 +167,22 @@ public final class BoardRules {
                 if (!isStation(target)) continue;
                 PieceState occupant = board.get(target);
                 if (occupant != null && (isTeammate(piece.owner(), occupant.owner()) || isCamp(target))) continue;
-                boolean validPath = piece.type() == PieceType.SAPPER && isRail(target)
-                        ? reachableBySapper.contains(target)
+                boolean validPath = sapperSearch != null && isRail(target)
+                        ? sapperSearch.reachable().contains(target)
                         : isValidPath(piece, target, board);
                 if (validPath) legal.add(target);
             }
         }
         return legal;
+    }
+
+    public static List<Position> movePath(PieceState piece, Position to, Map<Position, PieceState> board) {
+        Position from = piece.position();
+        if (!isValidPath(piece, to, board)) return List.of();
+        if (isNeighbor(from, to)) return List.of(from, to);
+        if (piece.type() == PieceType.SAPPER) return sapperPath(from, to, sapperSearch(from, board));
+        if (from.x() == to.x() || from.y() == to.y()) return linePath(from, to);
+        return curvedPath(from, to, board);
     }
 
     public static boolean isValidPath(PieceState piece, Position to, Map<Position, PieceState> board) {
@@ -171,7 +191,7 @@ public final class BoardRules {
         if (piece.type() == PieceType.LANDMINE || piece.type() == PieceType.FLAG || isHeadquarters(from)) return false;
         if (isNeighbor(from, to)) return true;
         if (!isRail(from) || !isRail(to)) return false;
-        if (piece.type() == PieceType.SAPPER) return sapperReachable(from, board).contains(to);
+        if (piece.type() == PieceType.SAPPER) return sapperSearch(from, board).reachable().contains(to);
         if (from.x() == to.x() || from.y() == to.y()) return pathClear(from, to, board);
         return curveClear(from, to, board);
     }
@@ -193,18 +213,48 @@ public final class BoardRules {
     }
 
     private static boolean curveClear(Position from, Position to, Map<Position, PieceState> board) {
-        return route(from, to, board, BoardRules::northRight, BoardRules::eastTop, new Position(10, 5), new Position(11, 6))
-                || route(from, to, board, BoardRules::eastTop, BoardRules::northRight, new Position(11, 6), new Position(10, 5))
-                || route(from, to, board, BoardRules::eastBottom, BoardRules::southRight, new Position(11, 10), new Position(10, 11))
-                || route(from, to, board, BoardRules::southRight, BoardRules::eastBottom, new Position(10, 11), new Position(11, 10))
-                || route(from, to, board, BoardRules::southLeft, BoardRules::westBottom, new Position(6, 11), new Position(5, 10))
-                || route(from, to, board, BoardRules::westBottom, BoardRules::southLeft, new Position(5, 10), new Position(6, 11))
-                || route(from, to, board, BoardRules::westTop, BoardRules::northLeft, new Position(5, 6), new Position(6, 5))
-                || route(from, to, board, BoardRules::northLeft, BoardRules::westTop, new Position(6, 5), new Position(5, 6));
+        return CURVED_ROUTES.stream().anyMatch(definition -> route(
+                from, to, board, definition.start(), definition.end(),
+                definition.firstCorner(), definition.secondCorner()));
+    }
+
+    private static List<Position> curvedPath(Position from, Position to, Map<Position, PieceState> board) {
+        for (RouteDefinition definition : CURVED_ROUTES) {
+            if (!route(from, to, board, definition.start(), definition.end(),
+                    definition.firstCorner(), definition.secondCorner())) continue;
+            List<Position> path = new ArrayList<>(linePath(from, definition.firstCorner()));
+            path.add(definition.secondCorner());
+            List<Position> finalLeg = linePath(definition.secondCorner(), to);
+            path.addAll(finalLeg.subList(1, finalLeg.size()));
+            return List.copyOf(path);
+        }
+        return List.of();
+    }
+
+    private static List<Position> linePath(Position from, Position to) {
+        List<Position> path = new ArrayList<>();
+        path.add(from);
+        int dx = Integer.compare(to.x(), from.x());
+        int dy = Integer.compare(to.y(), from.y());
+        int x = from.x();
+        int y = from.y();
+        while (x != to.x() || y != to.y()) {
+            x += dx;
+            y += dy;
+            path.add(new Position(x, y));
+        }
+        return List.copyOf(path);
     }
 
     @FunctionalInterface
     private interface PositionCheck { boolean test(Position p); }
+
+    private record RouteDefinition(
+            PositionCheck start,
+            PositionCheck end,
+            Position firstCorner,
+            Position secondCorner
+    ) {}
 
     private static boolean route(Position from, Position to, Map<Position, PieceState> board,
                                  PositionCheck start, PositionCheck end, Position firstCorner, Position secondCorner) {
@@ -229,10 +279,13 @@ public final class BoardRules {
     private static boolean westTop(Position p) { return p.y() == 6 && p.x() <= 5; }
     private static boolean northLeft(Position p) { return p.x() == 6 && p.y() <= 5; }
 
-    private static Set<Position> sapperReachable(Position from, Map<Position, PieceState> board) {
+    private record SapperSearch(Set<Position> reachable, Map<Position, Position> predecessor) {}
+
+    private static SapperSearch sapperSearch(Position from, Map<Position, PieceState> board) {
         Queue<Position> queue = new ArrayDeque<>();
         Set<Position> visited = new HashSet<>();
         Set<Position> reachable = new HashSet<>();
+        Map<Position, Position> predecessor = new HashMap<>();
         queue.add(from);
         visited.add(from);
         int[][] directions = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
@@ -244,31 +297,51 @@ public final class BoardRules {
                 if (!isValidPoint(x, y)) continue;
                 Position next = new Position(x, y);
                 if (!isRail(next) || !isNeighbor(current, next)) continue;
-                addReachable(next, board, visited, reachable, queue);
+                addReachable(current, next, board, visited, reachable, predecessor, queue);
             }
-            addCorner(current, new Position(10, 5), new Position(11, 6), board, visited, reachable, queue);
-            addCorner(current, new Position(11, 6), new Position(10, 5), board, visited, reachable, queue);
-            addCorner(current, new Position(11, 10), new Position(10, 11), board, visited, reachable, queue);
-            addCorner(current, new Position(10, 11), new Position(11, 10), board, visited, reachable, queue);
-            addCorner(current, new Position(6, 11), new Position(5, 10), board, visited, reachable, queue);
-            addCorner(current, new Position(5, 10), new Position(6, 11), board, visited, reachable, queue);
-            addCorner(current, new Position(5, 6), new Position(6, 5), board, visited, reachable, queue);
-            addCorner(current, new Position(6, 5), new Position(5, 6), board, visited, reachable, queue);
+            addCorner(current, new Position(10, 5), new Position(11, 6), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(11, 6), new Position(10, 5), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(11, 10), new Position(10, 11), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(10, 11), new Position(11, 10), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(6, 11), new Position(5, 10), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(5, 10), new Position(6, 11), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(5, 6), new Position(6, 5), board, visited, reachable, predecessor, queue);
+            addCorner(current, new Position(6, 5), new Position(5, 6), board, visited, reachable, predecessor, queue);
         }
-        return reachable;
+        return new SapperSearch(Set.copyOf(reachable), Map.copyOf(predecessor));
     }
 
     private static void addCorner(Position current, Position source, Position destination,
                                   Map<Position, PieceState> board, Set<Position> visited,
-                                  Set<Position> reachable, Queue<Position> queue) {
-        if (current.equals(source)) addReachable(destination, board, visited, reachable, queue);
+                                  Set<Position> reachable, Map<Position, Position> predecessor,
+                                  Queue<Position> queue) {
+        if (current.equals(source)) {
+            addReachable(current, destination, board, visited, reachable, predecessor, queue);
+        }
     }
 
-    private static void addReachable(Position next, Map<Position, PieceState> board,
-                                     Set<Position> visited, Set<Position> reachable, Queue<Position> queue) {
+    private static void addReachable(Position current, Position next, Map<Position, PieceState> board,
+                                     Set<Position> visited, Set<Position> reachable,
+                                     Map<Position, Position> predecessor, Queue<Position> queue) {
         if (visited.contains(next)) return;
         visited.add(next);
         reachable.add(next);
+        predecessor.put(next, current);
         if (!board.containsKey(next)) queue.add(next);
+    }
+
+    private static List<Position> sapperPath(Position from, Position to, SapperSearch search) {
+        if (!search.reachable().contains(to)) return List.of();
+        List<Position> reversed = new ArrayList<>();
+        Position current = to;
+        reversed.add(current);
+        while (!current.equals(from)) {
+            current = search.predecessor().get(current);
+            if (current == null) return List.of();
+            reversed.add(current);
+        }
+        List<Position> path = new ArrayList<>();
+        for (int index = reversed.size() - 1; index >= 0; index--) path.add(reversed.get(index));
+        return List.copyOf(path);
     }
 }

@@ -31,6 +31,11 @@ class BoardRulesTest {
         board.put(blocker.position(), blocker);
 
         assertThat(BoardRules.legalDestinations(sapper, board)).contains(new Position(12, 10));
+        assertThat(BoardRules.movePath(sapper, new Position(12, 10), board))
+                .startsWith(from)
+                .endsWith(new Position(12, 10))
+                .doesNotContain(blocker.position())
+                .hasSizeGreaterThan(10);
     }
 
     @Test
@@ -83,5 +88,20 @@ class BoardRulesTest {
 
             assertThat(BoardRules.isValidPath(bomb, new Position(12, 10), board)).isFalse();
         }
+    }
+
+    @Test
+    void ordinaryRailwayPathIncludesEveryTraversedJunction() {
+        Position from = new Position(10, 12);
+        PieceState captain = new PieceState("captain", PieceType.CAPTAIN, 0, from);
+        Map<Position, PieceState> board = new HashMap<>();
+        board.put(from, captain);
+
+        assertThat(BoardRules.movePath(captain, new Position(12, 10), board))
+                .containsExactly(
+                        new Position(10, 12),
+                        new Position(10, 11),
+                        new Position(11, 10),
+                        new Position(12, 10));
     }
 }

@@ -9,5 +9,5 @@ export function publicEventText(event: PublicEvent) {
   if (event.reason === "FLAG_LOST") return `${actor}军旗被擒获，全军覆没`;
   if (event.reason === "NO_LEGAL_MOVE") return `${actor}无棋可走，全军覆没`;
   if (event.reason === "SURRENDER") return `${actor}投降，全军覆没`;
-  return `${actor}连续超时，全军覆没`;
+  return `${actor}累计超时 5 次，全军覆没`;
 }

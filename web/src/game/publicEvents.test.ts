@@ -19,4 +19,13 @@ describe("public event copy", () => {
       at: "2026-09-20T00:00:00.000Z",
     })).toBe("北家无棋可走，全军覆没");
   });
+
+  it("announces total defeat on the fifth timeout", () => {
+    expect(publicEventText({
+      type: "PLAYER_ELIMINATED",
+      actor: 0,
+      reason: "TIMEOUT",
+      at: "2026-09-20T00:00:00.000Z",
+    })).toBe("南家累计超时 5 次，全军覆没");
+  });
 });

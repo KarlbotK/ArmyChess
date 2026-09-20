@@ -31,6 +31,9 @@ function scenarioActivity(scenario: DemoScenario): ActivityItem[] {
   if (scenario === "no-legal-move") {
     return [{ id: "no-legal-move", text: "北家无棋可走，全军覆没", time: "现在", tone: "coral" }];
   }
+  if (scenario === "timeout-elimination") {
+    return [{ id: "timeout-elimination", text: "南家累计超时 5 次，全军覆没", time: "现在", tone: "coral" }];
+  }
   return INITIAL_ACTIVITY;
 }
 
@@ -46,7 +49,7 @@ function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
   const [snapshot, setSnapshot] = useState(() => game.snapshotFor(0));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [legalMoves, setLegalMoves] = useState<Coordinate[]>([]);
-  const [legalRoutes, setLegalRoutes] = useState<Record<string, Coordinate[]>>({});
+  const [completedRoute, setCompletedRoute] = useState<Coordinate[]>([]);
   const [seconds, setSeconds] = useState(24);
   const [activity, setActivity] = useState(() => scenarioActivity(scenario));
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -59,13 +62,9 @@ function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
     const initial = game.firstPlayablePiece(0);
     if (initial) {
       const options = game.moveOptions(initial);
-      const selected = game.snapshotFor(0).pieces.find(({ id }) => id === initial);
       setSelectedId(initial);
       setLegalMoves(options.map(({ destination }) => destination));
-      setLegalRoutes(selected?.visibleType === "SAPPER"
-        ? Object.fromEntries(options.map(({ destination, route }) => [keyOf(destination), route]))
-        : {});
-      setToast(selected?.visibleType === "SAPPER" ? "已标出工兵铁路路线" : "已为你标出可走位置");
+      setToast("已为你标出可走位置");
     }
   }, [game]);
 
@@ -80,6 +79,12 @@ function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (completedRoute.length < 2) return;
+    const timer = window.setTimeout(() => setCompletedRoute([]), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [completedRoute]);
+
   const handleSelect = (pieceId: string) => {
     const piece = snapshot.pieces.find(({ id }) => id === pieceId);
     if (!piece || piece.owner !== snapshot.viewer) {
@@ -89,18 +94,14 @@ function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
     if (selectedId === pieceId) {
       setSelectedId(null);
       setLegalMoves([]);
-      setLegalRoutes({});
       return;
     }
     const options = game.moveOptions(pieceId);
     const nextMoves = options.map(({ destination }) => destination);
     setSelectedId(pieceId);
     setLegalMoves(nextMoves);
-    setLegalRoutes(piece.visibleType === "SAPPER"
-      ? Object.fromEntries(options.map(({ destination, route }) => [keyOf(destination), route]))
-      : {});
     setToast(nextMoves.length > 0
-      ? piece.visibleType === "SAPPER" ? `可走 ${nextMoves.length} 个位置，悬停落点查看路线` : `可走 ${nextMoves.length} 个位置`
+      ? `可走 ${nextMoves.length} 个位置`
       : "这枚棋子当前无法移动");
   };
 
@@ -111,7 +112,7 @@ function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
       setSnapshot(result.snapshot);
       setSelectedId(null);
       setLegalMoves([]);
-      setLegalRoutes({});
+      setCompletedRoute(result.event.path);
       setSeconds(30);
       const isClash = result.event.kind === "CLASH_OCCURRED";
       setActivity((items) => [{
@@ -172,7 +173,7 @@ function DemoGameScreen({ scenario }: { scenario: DemoScenario }) {
             pieces={snapshot.pieces}
             selectedId={selectedId}
             legalMoves={legalMoves}
-            legalRoutes={legalRoutes}
+            completedRoute={completedRoute}
             onSelect={handleSelect}
             onMove={handleMove}
           />
@@ -212,7 +213,7 @@ export function App() {
   const search = new URLSearchParams(window.location.search);
   const [demo, setDemo] = useState(() => search.get("demo") === "1");
   const requestedScenario = search.get("scenario");
-  const scenario: DemoScenario = requestedScenario === "sapper-route" || requestedScenario === "flag-capture" || requestedScenario === "no-legal-move"
+  const scenario: DemoScenario = requestedScenario === "sapper-route" || requestedScenario === "flag-capture" || requestedScenario === "no-legal-move" || requestedScenario === "timeout-elimination"
     ? requestedScenario
     : "standard";
   if (demo) return <DemoGameScreen scenario={scenario} />;

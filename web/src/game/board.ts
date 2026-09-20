@@ -182,23 +182,26 @@ function onWestBottom(p: Coordinate) { return p.y === 10 && p.x <= 5; }
 function onWestTop(p: Coordinate) { return p.y === 6 && p.x <= 5; }
 function onNorthLeft(p: Coordinate) { return p.x === 6 && p.y <= 5; }
 
+type CurveRoute = [
+  (p: Coordinate) => boolean,
+  (p: Coordinate) => boolean,
+  Coordinate,
+  Coordinate,
+];
+
+const CURVE_ROUTES: CurveRoute[] = [
+  [onNorthRight, onEastTop, { x: 10, y: 5 }, { x: 11, y: 6 }],
+  [onEastTop, onNorthRight, { x: 11, y: 6 }, { x: 10, y: 5 }],
+  [onEastBottom, onSouthRight, { x: 11, y: 10 }, { x: 10, y: 11 }],
+  [onSouthRight, onEastBottom, { x: 10, y: 11 }, { x: 11, y: 10 }],
+  [onSouthLeft, onWestBottom, { x: 6, y: 11 }, { x: 5, y: 10 }],
+  [onWestBottom, onSouthLeft, { x: 5, y: 10 }, { x: 6, y: 11 }],
+  [onWestTop, onNorthLeft, { x: 5, y: 6 }, { x: 6, y: 5 }],
+  [onNorthLeft, onWestTop, { x: 6, y: 5 }, { x: 5, y: 6 }],
+];
+
 function curveClear(from: Coordinate, to: Coordinate, occupied: ReadonlySet<string>) {
-  const routes: [
-    (p: Coordinate) => boolean,
-    (p: Coordinate) => boolean,
-    Coordinate,
-    Coordinate,
-  ][] = [
-    [onNorthRight, onEastTop, { x: 10, y: 5 }, { x: 11, y: 6 }],
-    [onEastTop, onNorthRight, { x: 11, y: 6 }, { x: 10, y: 5 }],
-    [onEastBottom, onSouthRight, { x: 11, y: 10 }, { x: 10, y: 11 }],
-    [onSouthRight, onEastBottom, { x: 10, y: 11 }, { x: 11, y: 10 }],
-    [onSouthLeft, onWestBottom, { x: 6, y: 11 }, { x: 5, y: 10 }],
-    [onWestBottom, onSouthLeft, { x: 5, y: 10 }, { x: 6, y: 11 }],
-    [onWestTop, onNorthLeft, { x: 5, y: 6 }, { x: 6, y: 5 }],
-    [onNorthLeft, onWestTop, { x: 6, y: 5 }, { x: 5, y: 6 }],
-  ];
-  return routes.some(([startOn, endOn, cornerA, cornerB]) =>
+  return CURVE_ROUTES.some(([startOn, endOn, cornerA, cornerB]) =>
     startOn(from)
     && endOn(to)
     && (keyOf(cornerA) === keyOf(from) || keyOf(cornerA) === keyOf(to) || !occupied.has(keyOf(cornerA)))
@@ -206,6 +209,35 @@ function curveClear(from: Coordinate, to: Coordinate, occupied: ReadonlySet<stri
     && pathClear(from, cornerA, occupied)
     && pathClear(cornerB, to, occupied),
   );
+}
+
+function lineRoute(from: Coordinate, to: Coordinate) {
+  const route: Coordinate[] = [{ ...from }];
+  const dx = Math.sign(to.x - from.x);
+  const dy = Math.sign(to.y - from.y);
+  let x = from.x;
+  let y = from.y;
+  while (x !== to.x || y !== to.y) {
+    x += dx;
+    y += dy;
+    route.push({ x, y });
+  }
+  return route;
+}
+
+function ordinaryRailRoute(from: Coordinate, to: Coordinate, occupied: ReadonlySet<string>) {
+  if (from.x === to.x || from.y === to.y) return lineRoute(from, to);
+  const route = CURVE_ROUTES.find(([startOn, endOn, cornerA, cornerB]) =>
+    startOn(from)
+    && endOn(to)
+    && (keyOf(cornerA) === keyOf(from) || keyOf(cornerA) === keyOf(to) || !occupied.has(keyOf(cornerA)))
+    && (keyOf(cornerB) === keyOf(from) || keyOf(cornerB) === keyOf(to) || !occupied.has(keyOf(cornerB)))
+    && pathClear(from, cornerA, occupied)
+    && pathClear(cornerB, to, occupied),
+  );
+  if (!route) return [];
+  const [, , cornerA, cornerB] = route;
+  return [...lineRoute(from, cornerA), cornerB, ...lineRoute(cornerB, to).slice(1)];
 }
 
 interface RailwaySearch {
@@ -276,9 +308,17 @@ export function legalMoveOptions(piece: BoardPiece, pieces: readonly BoardPiece[
       ? sapperRailSearch.reachable.has(keyOf(to))
       : isValidMovePath(piece, to, occupied);
     if (!valid) return [];
+    const followsOrdinaryRail = !usesSapperRail
+      && !isNeighbor(piece.position, to)
+      && isRail(piece.position.x, piece.position.y)
+      && isRail(to.x, to.y);
     return [{
       destination: to,
-      route: usesSapperRail ? sapperRoute(piece.position, to, sapperRailSearch) : [piece.position, to],
+      route: usesSapperRail
+        ? sapperRoute(piece.position, to, sapperRailSearch)
+        : followsOrdinaryRail
+          ? ordinaryRailRoute(piece.position, to, occupied)
+          : [piece.position, to],
     }];
   });
 }

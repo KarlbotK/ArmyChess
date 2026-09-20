@@ -15,7 +15,7 @@ interface GameBoardProps {
   pieces: PieceView[];
   selectedId: string | null;
   legalMoves: Coordinate[];
-  legalRoutes?: Readonly<Record<string, Coordinate[]>>;
+  completedRoute?: readonly Coordinate[];
   onSelect: (pieceId: string) => void;
   onMove: (to: Coordinate) => void;
 }
@@ -141,28 +141,11 @@ const positionStyle = ({ x, y }: Coordinate) => ({
 
 const routePoint = ({ x, y }: Coordinate) => `${5 + x * 5.625},${5 + y * 5.625}`;
 
-export function GameBoard({ pieces, selectedId, legalMoves, legalRoutes = {}, onSelect, onMove }: GameBoardProps) {
+export function GameBoard({ pieces, selectedId, legalMoves, completedRoute = [], onSelect, onMove }: GameBoardProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState(760);
-  const [previewRouteKey, setPreviewRouteKey] = useState<string | null>(null);
   const legalKeys = useMemo(() => new Set(legalMoves.map(keyOf)), [legalMoves]);
-  const routeSegments = useMemo(() => {
-    const seen = new Set<string>();
-    const segments: [Coordinate, Coordinate][] = [];
-    for (const route of Object.values(legalRoutes)) {
-      for (let index = 1; index < route.length; index += 1) {
-        const first = keyOf(route[index - 1]);
-        const second = keyOf(route[index]);
-        const segmentKey = first < second ? `${first}|${second}` : `${second}|${first}`;
-        if (seen.has(segmentKey)) continue;
-        seen.add(segmentKey);
-        segments.push([route[index - 1], route[index]]);
-      }
-    }
-    return segments;
-  }, [legalRoutes]);
-  const previewRoute = previewRouteKey ? legalRoutes[previewRouteKey] : undefined;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -178,22 +161,26 @@ export function GameBoard({ pieces, selectedId, legalMoves, legalRoutes = {}, on
     if (canvasRef.current) drawBoard(canvasRef.current, size);
   }, [size]);
 
-  useEffect(() => setPreviewRouteKey(null), [selectedId, legalRoutes]);
-
   return (
     <div ref={hostRef} className="game-board" aria-label="四国军棋棋盘">
       <canvas ref={canvasRef} className="game-board__canvas" aria-hidden="true" />
-      {routeSegments.length > 0 && (
+      {completedRoute.length > 1 && (
         <svg className="game-board__routes" viewBox="0 0 100 100" aria-hidden="true">
-          <g className="game-board__route-network">
-            {routeSegments.map(([from, to]) => (
-              <line key={`${routePoint(from)}-${routePoint(to)}`} x1={routePoint(from).split(",")[0]} y1={routePoint(from).split(",")[1]} x2={routePoint(to).split(",")[0]} y2={routePoint(to).split(",")[1]} />
-            ))}
-          </g>
-          {previewRoute && previewRoute.length > 1 && (
-            <polyline className="game-board__route-preview" points={previewRoute.map(routePoint).join(" ")} />
-          )}
+          <polyline
+            className="game-board__route-completed"
+            pathLength="1"
+            points={completedRoute.map(routePoint).join(" ")}
+          />
+          <circle
+            className="game-board__route-end"
+            cx={5 + completedRoute.at(-1)!.x * 5.625}
+            cy={5 + completedRoute.at(-1)!.y * 5.625}
+            r="1.35"
+          />
         </svg>
+      )}
+      {completedRoute.length > 1 && (
+        <span className="sr-only" role="status">最近一步经过 {completedRoute.length - 1} 段路径</span>
       )}
       <div className="game-board__pieces">
         {pieces.map((piece) => {
@@ -208,10 +195,6 @@ export function GameBoard({ pieces, selectedId, legalMoves, legalRoutes = {}, on
               style={positionStyle(piece.position)}
               aria-label={piece.visibleType ? `${owner.direction}${label}` : `${owner.direction}暗棋`}
               aria-pressed={selectedId === piece.id}
-              onMouseEnter={() => { if (canMoveHere) setPreviewRouteKey(keyOf(piece.position)); }}
-              onMouseLeave={() => setPreviewRouteKey(null)}
-              onFocus={() => { if (canMoveHere) setPreviewRouteKey(keyOf(piece.position)); }}
-              onBlur={() => setPreviewRouteKey(null)}
               onClick={() => canMoveHere ? onMove(piece.position) : onSelect(piece.id)}
             >
               {label}
@@ -225,11 +208,7 @@ export function GameBoard({ pieces, selectedId, legalMoves, legalRoutes = {}, on
             className="legal-move"
             style={positionStyle(move)}
             onClick={() => onMove(move)}
-            onMouseEnter={() => setPreviewRouteKey(keyOf(move))}
-            onMouseLeave={() => setPreviewRouteKey(null)}
-            onFocus={() => setPreviewRouteKey(keyOf(move))}
-            onBlur={() => setPreviewRouteKey(null)}
-            aria-label={`移动到第 ${move.x + 1} 列第 ${move.y + 1} 行${legalRoutes[keyOf(move)] ? `，铁路经过 ${legalRoutes[keyOf(move)].length - 1} 段` : ""}`}
+            aria-label={`移动到第 ${move.x + 1} 列第 ${move.y + 1} 行`}
           >
             <span className="sr-only">合法落点</span>
           </button>

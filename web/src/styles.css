@@ -300,27 +300,28 @@ input:focus-visible {
   pointer-events: none;
 }
 
-.game-board__route-network line {
-  stroke: rgba(245, 211, 105, 0.42);
-  stroke-width: 0.62;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 1.2px rgba(38, 62, 35, 0.75));
-}
-
-.game-board__route-preview {
+.game-board__route-completed {
   fill: none;
   stroke: #ffe074;
   stroke-width: 1.05;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 1.5 1.2;
   filter: drop-shadow(0 0 2px rgba(255, 224, 116, 0.9));
-  animation: route-flow 900ms linear infinite;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: route-reveal 420ms ease-out forwards;
 }
 
-@keyframes route-flow {
-  to { stroke-dashoffset: -2.7; }
+.game-board__route-end {
+  fill: #ffe074;
+  stroke: #35543d;
+  stroke-width: 0.45;
+  filter: drop-shadow(0 0 2px rgba(255, 224, 116, 0.9));
+  animation: route-end-pop 320ms 360ms ease-out both;
 }
+
+@keyframes route-reveal { to { stroke-dashoffset: 0; } }
+@keyframes route-end-pop { from { opacity: 0; } }
 
 .game-piece,
 .legal-move {

@@ -31,7 +31,8 @@ class GameEnginePrivacyTest {
 
     @Test
     void publicEventSchemaCannotRevealBattlePieceIdentities() throws Exception {
-        String json = new ObjectMapper().writeValueAsString(PublicGameEvent.clash(0, new Position(8, 8)));
+        String json = new ObjectMapper().writeValueAsString(PublicGameEvent.clash(
+                0, new Position(8, 8), List.of(new Position(8, 10), new Position(8, 9), new Position(8, 8))));
 
         assertThat(json).contains("CLASH_OCCURRED");
         assertThat(json.toLowerCase(Locale.ROOT))
@@ -75,16 +76,23 @@ class GameEnginePrivacyTest {
     void serverDeadlineSkipsTimedOutTurnsAndEliminatesAfterFiveStrikes() {
         GameEngine engine = startedGame();
 
+        List<PublicGameEvent> finalEvents = List.of();
         for (int timeout = 0; timeout < 17; timeout++) {
             GameSnapshot before = engine.snapshotFor(0);
             assertThat(before.turnDeadlineEpochMs()).isNotNull();
-            engine.expireTurn(before.turnDeadlineEpochMs()).orElseThrow();
+            finalEvents = engine.expireTurn(before.turnDeadlineEpochMs()).orElseThrow();
         }
 
         GameSnapshot snapshot = engine.snapshotFor(0);
         assertThat(snapshot.alive().get(0)).isFalse();
         assertThat(snapshot.timeoutCounts().get(0)).isEqualTo(GameEngine.MAX_TIMEOUTS);
         assertThat(snapshot.phase()).isEqualTo("PLAYING");
+        assertThat(snapshot.pieces()).noneMatch(piece -> piece.owner() == 0);
+        assertThat(finalEvents).anySatisfy(event -> {
+            assertThat(event.type()).isEqualTo("PLAYER_ELIMINATED");
+            assertThat(event.actor()).isEqualTo(0);
+            assertThat(event.reason()).isEqualTo("TIMEOUT");
+        });
     }
 
     @Test
@@ -151,6 +159,11 @@ class GameEnginePrivacyTest {
 
         List<PublicGameEvent> events = engine.move(0, "attacker", new Position(8, 8));
 
+        assertThat(events)
+                .filteredOn(event -> event.type().equals("CLASH_OCCURRED"))
+                .singleElement()
+                .satisfies(event -> assertThat(event.path()).containsExactly(
+                        new Position(8, 10), new Position(8, 9), new Position(8, 8)));
         assertThat(events).anySatisfy(event -> {
             assertThat(event.type()).isEqualTo("PLAYER_ELIMINATED");
             assertThat(event.actor()).isEqualTo(1);
