@@ -187,7 +187,12 @@ function curveClear(from: Coordinate, to: Coordinate, occupied: ReadonlySet<stri
     [onNorthLeft, onWestTop, { x: 6, y: 5 }, { x: 5, y: 6 }],
   ];
   return routes.some(([startOn, endOn, cornerA, cornerB]) =>
-    startOn(from) && endOn(to) && pathClear(from, cornerA, occupied) && pathClear(cornerB, to, occupied),
+    startOn(from)
+    && endOn(to)
+    && (keyOf(cornerA) === keyOf(from) || keyOf(cornerA) === keyOf(to) || !occupied.has(keyOf(cornerA)))
+    && (keyOf(cornerB) === keyOf(from) || keyOf(cornerB) === keyOf(to) || !occupied.has(keyOf(cornerB)))
+    && pathClear(from, cornerA, occupied)
+    && pathClear(cornerB, to, occupied),
   );
 }
 

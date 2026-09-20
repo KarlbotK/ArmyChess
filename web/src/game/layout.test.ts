@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createDefaultLayout, fromViewer, isLayoutValid, rotateForViewer, validateLayout } from "./layout";
+import {
+  createDefaultLayout,
+  fromViewer,
+  isLayoutValid,
+  LayoutRuleViolation,
+  rotateForViewer,
+  swapLayoutPieces,
+  validateLayout,
+} from "./layout";
 
 describe("layout and viewer rotation", () => {
   it("creates 25 valid pieces for each player", () => {
@@ -11,13 +19,19 @@ describe("layout and viewer rotation", () => {
     }
   });
 
-  it("flags illegal bomb and flag swaps before submission", () => {
-    const layout = createDefaultLayout(0).map((piece) => ({ ...piece, position: { ...piece.position } }));
-    const flag = layout.find(({ type }) => type === "FLAG")!;
-    const front = layout.find(({ position }) => position.y === 11)!;
-    [flag.position, front.position] = [front.position, flag.position];
+  it.each([
+    ["LANDMINE", "LANDMINE_REQUIRES_BACK_ROWS", "地雷只能放在最后两排"],
+    ["BOMB", "BOMB_FORBIDDEN_ON_FRONT", "炸弹不能放在第一排"],
+    ["FLAG", "FLAG_REQUIRES_HQ", "军旗只能放在大本营"],
+  ] as const)("rejects an illegal %s swap before mutating the layout", (type, code, message) => {
+    const layout = createDefaultLayout(0);
+    const original = structuredClone(layout);
+    const restrictedIndex = layout.findIndex((piece) => piece.type === type);
+    const frontIndex = layout.findIndex(({ position }) => position.y === 11);
 
-    expect(validateLayout(0, layout).flagInHeadquarters).toBe(false);
+    expect(() => swapLayoutPieces(0, layout, restrictedIndex, frontIndex))
+      .toThrowError(new LayoutRuleViolation(code, message));
+    expect(layout).toEqual(original);
   });
 
   it("places every viewer's own territory at the bottom", () => {

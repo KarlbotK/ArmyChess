@@ -202,8 +202,15 @@ public final class BoardRules {
     private static boolean route(Position from, Position to, Map<Position, PieceState> board,
                                  PositionCheck start, PositionCheck end, Position firstCorner, Position secondCorner) {
         return start.test(from) && end.test(to)
+                && transitOpen(firstCorner, from, to, board)
+                && transitOpen(secondCorner, from, to, board)
                 && pathClear(from, firstCorner, board)
                 && pathClear(secondCorner, to, board);
+    }
+
+    private static boolean transitOpen(Position point, Position from, Position to,
+                                       Map<Position, PieceState> board) {
+        return point.equals(from) || point.equals(to) || !board.containsKey(point);
     }
 
     private static boolean northRight(Position p) { return p.x() == 10 && p.y() <= 5; }

@@ -26,6 +26,19 @@ export interface LayoutPlacement {
   position: Coordinate;
 }
 
+export type LayoutRuleViolationCode =
+  | "INVALID_LAYOUT_SWAP"
+  | "FLAG_REQUIRES_HQ"
+  | "LANDMINE_REQUIRES_BACK_ROWS"
+  | "BOMB_FORBIDDEN_ON_FRONT";
+
+export class LayoutRuleViolation extends Error {
+  constructor(public readonly code: LayoutRuleViolationCode, message: string) {
+    super(message);
+    this.name = "LayoutRuleViolation";
+  }
+}
+
 function slotsFor(player: PlayerId) {
   const slots: Coordinate[] = [];
   for (let y = 0; y < 17; y += 1) {
@@ -93,6 +106,36 @@ export function validateLayout(player: PlayerId, layout: readonly LayoutPlacemen
 
 export function isLayoutValid(status: LayoutRuleStatus) {
   return Object.values(status).every(Boolean);
+}
+
+export function swapLayoutPieces(
+  player: PlayerId,
+  layout: readonly LayoutPlacement[],
+  firstIndex: number,
+  secondIndex: number,
+) {
+  if (firstIndex < 0 || secondIndex < 0 || firstIndex >= layout.length || secondIndex >= layout.length) {
+    throw new LayoutRuleViolation("INVALID_LAYOUT_SWAP", "无法交换不存在的棋子");
+  }
+
+  const next = layout.map((piece) => ({ ...piece, position: { ...piece.position } }));
+  [next[firstIndex].position, next[secondIndex].position] = [next[secondIndex].position, next[firstIndex].position];
+  const status = validateLayout(player, next);
+
+  if (!status.flagInHeadquarters) {
+    throw new LayoutRuleViolation("FLAG_REQUIRES_HQ", "军旗只能放在大本营");
+  }
+  if (!status.minesInBackRows) {
+    throw new LayoutRuleViolation("LANDMINE_REQUIRES_BACK_ROWS", "地雷只能放在最后两排");
+  }
+  if (!status.bombsBehindFront) {
+    throw new LayoutRuleViolation("BOMB_FORBIDDEN_ON_FRONT", "炸弹不能放在第一排");
+  }
+  if (!isLayoutValid(status)) {
+    throw new LayoutRuleViolation("INVALID_LAYOUT_SWAP", "该交换不符合布阵规则");
+  }
+
+  return next;
 }
 
 export function rotateForViewer(position: Coordinate, viewer: PlayerId): Coordinate {

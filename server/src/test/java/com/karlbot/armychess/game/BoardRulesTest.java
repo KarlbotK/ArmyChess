@@ -28,4 +28,18 @@ class BoardRulesTest {
         assertThat(BoardRules.territoryOwner(new Position(9, 16))).isEqualTo(0);
         assertThat(BoardRules.territoryOwner(new Position(16, 9))).isEqualTo(3);
     }
+
+    @Test
+    void railwayPieceCannotBypassBlockerAtCurvedJunction() {
+        Position from = new Position(10, 12);
+        PieceState bomb = new PieceState("bomb", PieceType.BOMB, 0, from);
+        for (Position blockedJunction : new Position[]{new Position(10, 11), new Position(11, 10)}) {
+            PieceState marshal = new PieceState("marshal", PieceType.MARSHAL, 0, blockedJunction);
+            Map<Position, PieceState> board = new HashMap<>();
+            board.put(bomb.position(), bomb);
+            board.put(marshal.position(), marshal);
+
+            assertThat(BoardRules.isValidPath(bomb, new Position(12, 10), board)).isFalse();
+        }
+    }
 }

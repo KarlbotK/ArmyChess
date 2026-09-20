@@ -1,7 +1,15 @@
 import { BookOpen, Check, CopySimple, Flag, Mountains, WifiHigh } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { keyOf, legalDestinations, type BoardPiece } from "../game/board";
-import { createDefaultLayout, fromViewer, rotateForViewer, validateLayout, type LayoutPlacement } from "../game/layout";
+import {
+  createDefaultLayout,
+  fromViewer,
+  LayoutRuleViolation,
+  rotateForViewer,
+  swapLayoutPieces,
+  validateLayout,
+  type LayoutPlacement,
+} from "../game/layout";
 import { PLAYER_META, type Coordinate, type GameSnapshot, type PieceView, type PlayerId } from "../game/types";
 import { GameSocket } from "../network/gameSocket";
 import type { RoomPlayer } from "../network/protocol";
@@ -175,13 +183,18 @@ export function OnlineGame({ ticket, onLeave }: { ticket: SessionTicket; onLeave
         setSelectedId(null);
         return;
       }
-      setLayout((current) => {
-        const next = current.map((piece) => ({ ...piece, position: { ...piece.position } }));
-        [next[selectedIndex].position, next[nextIndex].position] = [next[nextIndex].position, next[selectedIndex].position];
-        return next;
-      });
       setSelectedId(null);
-      setToast("位置已交换，请检查布阵规则");
+      try {
+        const next = swapLayoutPieces(ticket.playerId, layout, selectedIndex, nextIndex);
+        setLayout(next);
+        setToast("位置已交换");
+      } catch (error) {
+        if (error instanceof LayoutRuleViolation) {
+          setToast(`${error.message}，已禁止交换`);
+          return;
+        }
+        throw error;
+      }
       return;
     }
     if (snapshot.phase !== "PLAYING") return;

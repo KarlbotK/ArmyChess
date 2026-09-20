@@ -43,4 +43,14 @@ describe("classic four-player board", () => {
     expect(legalDestinations(sapper, [sapper])).toContainEqual({ x: 10, y: 11 });
     expect(legalDestinations(captain, [captain])).not.toContainEqual({ x: 10, y: 11 });
   });
+
+  it.each([
+    { x: 10, y: 11 },
+    { x: 11, y: 10 },
+  ])("does not let a railway piece bypass occupied curved junction $x,$y", (position) => {
+    const bomb: BoardPiece = { id: "bomb", owner: 0, type: "BOMB", position: { x: 10, y: 12 } };
+    const marshal: BoardPiece = { id: "marshal", owner: 0, type: "MARSHAL", position };
+
+    expect(legalDestinations(bomb, [bomb, marshal])).not.toContainEqual({ x: 12, y: 10 });
+  });
 });
